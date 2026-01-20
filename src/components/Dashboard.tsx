@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Priority } from '../types';
-import type { Task, Project } from '../types';
+import { type Task, PRIORITY, type Project, type Priority } from '../types';
 
 interface DashboardProps {
   user: { name: string; email: string };
@@ -10,9 +9,9 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [tasks, setTasks] = useState<Task[]>([
-    { id: '1', title: 'Finalize Q4 Marketing Budget', priority: Priority.HIGH, time: '2023-10-24', category: 'Marketing', completed: false },
-    { id: '2', title: 'Weekly Sync with Design Team', priority: Priority.MEDIUM, time: '2023-10-24', category: 'Product', completed: false },
-    { id: '3', title: 'Check flight status for London', priority: Priority.LOW, category: 'Personal', completed: true },
+    { id: '1', title: 'Finalize Q4 Marketing Budget', priority: PRIORITY.HIGH, time: '2023-10-24', category: 'Marketing', completed: false },
+    { id: '2', title: 'Weekly Sync with Design Team', priority: PRIORITY.MEDIUM, time: '2023-10-24', category: 'Product', completed: false },
+    { id: '3', title: 'Check flight status for London', priority: PRIORITY.LOW, category: 'Personal', completed: true },
   ]);
 
   const [projects, setProjects] = useState<Project[]>([
@@ -22,7 +21,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   ]);
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<Priority>(Priority.MEDIUM);
+  const [newTaskPriority, setNewTaskPriority] = useState<Priority>(PRIORITY.MEDIUM);
   const [newTaskDate, setNewTaskDate] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,7 +57,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setTasks([newTask, ...tasks]);
       setNewTaskTitle('');
       setNewTaskDate('');
-      setNewTaskPriority(Priority.MEDIUM);
+      setNewTaskPriority(PRIORITY.MEDIUM);
       setIsAdding(false);
     }, 500);
   };
@@ -200,9 +199,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-800 gap-4">
               <div className="flex flex-wrap gap-4 items-center">
                 <div className="flex bg-background-dark rounded-lg p-1 border border-slate-700">
-                  <button onClick={() => setNewTaskPriority(Priority.LOW)} className={`px-3 py-1 text-[10px] font-bold rounded ${newTaskPriority === Priority.LOW ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>LOW</button>
-                  <button onClick={() => setNewTaskPriority(Priority.MEDIUM)} className={`px-3 py-1 text-[10px] font-bold rounded ${newTaskPriority === Priority.MEDIUM ? 'bg-amber-500/20 text-amber-500' : 'text-slate-500'}`}>MED</button>
-                  <button onClick={() => setNewTaskPriority(Priority.HIGH)} className={`px-3 py-1 text-[10px] font-bold rounded ${newTaskPriority === Priority.HIGH ? 'bg-red-500/20 text-red-500' : 'text-slate-500'}`}>HIGH</button>
+                  <button onClick={() => setNewTaskPriority(PRIORITY.LOW)} className={`px-3 py-1 text-[10px] font-bold rounded ${newTaskPriority === PRIORITY.LOW ? 'bg-slate-700 text-white' : 'text-slate-500'}`}>LOW</button>
+                  <button onClick={() => setNewTaskPriority(PRIORITY.MEDIUM)} className={`px-3 py-1 text-[10px] font-bold rounded ${newTaskPriority === PRIORITY.MEDIUM ? 'bg-amber-500/20 text-amber-500' : 'text-slate-500'}`}>MED</button>
+                  <button onClick={() => setNewTaskPriority(PRIORITY.HIGH)} className={`px-3 py-1 text-[10px] font-bold rounded ${newTaskPriority === PRIORITY.HIGH ? 'bg-red-500/20 text-red-500' : 'text-slate-500'}`}>HIGH</button>
                 </div>
                 <div className="flex items-center gap-2 text-slate-400">
                    <span className="material-symbols-outlined text-sm">calendar_month</span>
@@ -288,7 +287,7 @@ const TaskItem: React.FC<{ task: Task; onToggle: () => void; onDelete: (id: stri
     <div className="flex-1">
       <span className={`text-base font-semibold block ${task.completed ? 'text-slate-500 line-through' : 'text-slate-200'}`}>{task.title}</span>
       <div className="flex items-center gap-3 mt-1 text-[10px]">
-        <span className={`flex items-center gap-1 font-black uppercase ${task.priority === Priority.HIGH ? 'text-red-500' : 'text-amber-500'}`}>
+        <span className={`flex items-center gap-1 font-black uppercase ${task.priority === PRIORITY.HIGH ? 'text-red-500' : 'text-amber-500'}`}>
           <span className="material-symbols-outlined text-xs">flag</span> Priority {task.priority}
         </span>
         {task.time && <span className="text-slate-500 flex items-center gap-1"><span className="material-symbols-outlined text-xs">calendar_today</span> {task.time}</span>}

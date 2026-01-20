@@ -1,9 +1,12 @@
 
-export enum Priority {
-  HIGH = '1',
-  MEDIUM = '2',
-  LOW = '3'
-}
+export const PRIORITY = {
+  HIGH: '1',
+  MEDIUM: '2',
+  LOW: '3',
+} as const;
+
+export type Priority = typeof PRIORITY[keyof typeof PRIORITY];
+
 
 export interface Task {
   id: string;

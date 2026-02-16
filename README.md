@@ -4,13 +4,21 @@
   A lightweight task management app built using React, TypeScript, and Vite.
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/github/repo-size/snehalchetry/taskflow" />
+  <img src="https://img.shields.io/github/stars/snehalchetry/taskflow" />
+  <img src="https://img.shields.io/github/forks/snehalchetry/taskflow" />
+  <img src="https://img.shields.io/github/issues/snehalchetry/taskflow" />
+  <img src="https://img.shields.io/github/license/snehalchetry/taskflow" />
+</p>
+
 ---
 
 ## 🧾 About
 
 **Taskflow** is a modern frontend application for managing tasks in an intuitive and responsive interface. It is built with React + TypeScript using the Vite build tool for fast development and optimized builds.
 
-This repository contains the **frontend only** — there is no backend API in this project.  [oai_citation:1‡GitHub](https://github.com/snehalchetry/taskflow)
+This repository contains the **frontend only** — there is no backend API in this project.
 
 ---
 
@@ -42,7 +50,7 @@ taskflow/
 ├── vite.config.ts
 └── README.md
 ```
-*(Actual folder names from the repo)*  [oai_citation:2‡GitHub](https://github.com/snehalchetry/taskflow)
+*(Actual folder names from the repo)*
 
 ---
 
@@ -61,7 +69,7 @@ taskflow/
 **Languages**
 - TypeScript — ~90.5%  
 - HTML — ~7.7%  
-- JavaScript — ~1.8%  [oai_citation:3‡GitHub](https://github.com/snehalchetry/taskflow)
+- JavaScript — ~1.8% 
 
 ---
 

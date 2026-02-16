@@ -1,221 +1,146 @@
 # 🚀 Taskflow
 
 <p align="center">
-  <b>A modern full-stack task management application built with React and Node.js</b><br/>
-  Organize your workflow. Boost your productivity. Stay in control.
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/github/repo-size/snehalchetry/taskflow" />
-  <img src="https://img.shields.io/github/stars/snehalchetry/taskflow" />
-  <img src="https://img.shields.io/github/forks/snehalchetry/taskflow" />
-  <img src="https://img.shields.io/github/issues/snehalchetry/taskflow" />
-  <img src="https://img.shields.io/github/license/snehalchetry/taskflow" />
+  A lightweight task management app built using React, TypeScript, and Vite.
 </p>
 
 ---
 
-# 📖 Overview
+## 🧾 About
 
-**Taskflow** is a full-stack task management system that enables users to create, update, track, and manage tasks efficiently.
+**Taskflow** is a modern frontend application for managing tasks in an intuitive and responsive interface. It is built with React + TypeScript using the Vite build tool for fast development and optimized builds.
 
-Built using modern technologies, it demonstrates clean architecture, frontend-backend integration, and production-ready development practices.
-
-Perfect for portfolio, hackathons, and learning full-stack development.
+This repository contains the **frontend only** — there is no backend API in this project.  [oai_citation:1‡GitHub](https://github.com/snehalchetry/taskflow)
 
 ---
 
-# ✨ Features
+## 📦 Features
 
-- Create tasks  
-- Edit tasks  
-- Delete tasks  
-- Mark tasks complete / incomplete  
-- Responsive UI  
-- REST API backend  
-- Full-stack architecture  
-- Scalable structure  
+- Task listing and organization  
+- Intuitive UI built with React components  
+- TypeScript for type safety  
+- Fast development with Vite and HMR  
+- ESLint configured for code quality  
+- Ready for future integration with backend APIs
 
 ---
 
-# 🧱 Project Structure
+## 🗂️ Project Structure
 
 ```
 taskflow/
 │
-├── frontend/              # React frontend
-├── backend/               # Node.js backend
+├── public/                  # Static public files
+├── src/                     # Application source files
+│   ├── components/          # Reusable UI components
+│   ├── styles/              # Component or global styles
+│   └── main app files...
 │
-├── README.md
-└── .gitignore
+├── .gitignore
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── README.md
 ```
+*(Actual folder names from the repo)*  [oai_citation:2‡GitHub](https://github.com/snehalchetry/taskflow)
 
 ---
 
-# 🛠️ Tech Stack
+## 🛠 Tech Stack
 
-## Frontend
+**Frontend**
+- 🧠 React  
+- 📦 TypeScript  
+- ⚡ Vite  
+- 🎨 CSS / HTML
 
-- React  
-- JavaScript / TypeScript  
-- HTML5  
-- CSS3  
+**Tools**
+- ESLint (linting)  
+- npm (package management)  
 
-## Backend
-
-- Node.js  
-- Express.js  
-
-## Tools
-
-- Git  
-- GitHub  
-- npm  
+**Languages**
+- TypeScript — ~90.5%  
+- HTML — ~7.7%  
+- JavaScript — ~1.8%  [oai_citation:3‡GitHub](https://github.com/snehalchetry/taskflow)
 
 ---
 
-# ⚙️ Installation
+## 📈 Getting Started
 
-## 1. Clone Repository
+### 1. Clone the repository
 
-```
+```bash
 git clone https://github.com/snehalchetry/taskflow.git
 cd taskflow
 ```
 
 ---
 
-## 2. Backend Setup
+### 2. Install dependencies
 
-```
-cd backend
+```bash
 npm install
+```
+
+---
+
+### 3. Start Development Server
+
+```bash
 npm run dev
 ```
 
-or
+This launches the app locally with hot module reloading (HMR). Then open:
 
 ```
-npm start
+http://localhost:5173
 ```
+
+(or the URL shown in terminal)
 
 ---
 
-## 3. Frontend Setup
+## 🧪 Scripts
 
-Open new terminal:
-
-```
-cd frontend
-npm install
-npm run dev
-```
-
----
-
-# 🌐 Run Application
-
-Open:
-
-```
-http://localhost:3000
-```
+| Command | Action |
+|---------|--------|
+| `npm run dev` | Start development server |
+| `npm run build` | Production build |
+| `npm run preview` | Preview production build |
+| `npm test` | Run tests (if configured) |
 
 ---
 
-# 📡 API Endpoints
+## 🧠 Why This Stack
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /tasks | Get all tasks |
-| POST | /tasks | Create task |
-| PUT | /tasks/:id | Update task |
-| DELETE | /tasks/:id | Delete task |
+- **Vite** gives extremely fast reloads and optimized production output  
+- **React + TypeScript** enables scalable, type-safe frontend development  
+- **ESLint** helps maintain consistent, high-quality code  
 
 ---
 
-# 📸 Screenshots
+## 📄 Contributing
 
-Add screenshots in a folder called **screenshots**
+Contributions are welcome!  
+To contribute:
 
-Example:
-
-```
-screenshots/dashboard.png
-```
-
-Then add:
-
-```
-![Dashboard](screenshots/dashboard.png)
-```
+1. Fork the project  
+2. Create a feature branch:  
+   ```bash
+   git checkout -b feature/YourFeature
+   ```  
+3. Commit your changes  
+4. Push to your fork  
+5. Open a Pull Request
 
 ---
 
-# 🚀 Deployment
+## ⭐ Support
 
-Frontend:
-
-- Vercel  
-- Netlify  
-
-Backend:
-
-- Render  
-- Railway  
+If you find this project useful, consider giving it a ⭐ on GitHub!
 
 ---
 
-# 🎯 Skills Demonstrated
+## 📜 License
 
-- Full-stack development  
-- REST API development  
-- React frontend development  
-- Backend server creation  
-- Project structuring  
-
----
-
-# 👨‍💻 Author
-
-**Snehal Chetry**
-
-GitHub:  
-https://github.com/snehalchetry
-
-LinkedIn:  
-(Add your LinkedIn)
-
----
-
-# 🤝 Contributing
-
-```
-Fork repository
-Create branch
-Commit changes
-Push branch
-Open Pull Request
-```
-
----
-
-# ⭐ Support
-
-Give a star if you like this project.
-
----
-
-# 📄 License
-
-MIT License
-
----
-
-# 🔮 Future Improvements
-
-- Authentication
-- Database integration
-- Deadlines
-- Notifications
-- Drag and drop
+Distributed under the MIT License.

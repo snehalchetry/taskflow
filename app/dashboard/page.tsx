@@ -2,8 +2,10 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import Particles from "@/components/ui/Particles";
 import { Logo } from "@/components/ui/logo";
+import { supabase } from "@/lib/supabase";
 
 const PRIORITY = {
     HIGH: "1",
@@ -25,7 +27,6 @@ interface Task {
 
 interface Project {
     id: string;
-    user_id?: string;
     name: string;
     color: string;
 }
@@ -33,19 +34,55 @@ interface Project {
 export default function DashboardPage() {
     const router = useRouter();
     const [user, setUser] = useState<{ name: string; email: string; id: string } | null>(null);
-
-    useEffect(() => {
-        const stored = localStorage.getItem("taskflow_user");
-        if (stored) {
-            setUser(JSON.parse(stored));
-        } else {
-            router.push("/login");
-        }
-    }, [router]);
-
     const [tasks, setTasks] = useState<Task[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Sync Auth State
+    useEffect(() => {
+        const syncAuth = async () => {
+            // 1. Try LocalStorage
+            const storedUser = localStorage.getItem("taskflow_user");
+            if (storedUser) {
+                setUser(JSON.parse(storedUser));
+            }
+
+            // 2. Check Supabase Session (for OAuth)
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                const userData = {
+                    name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || "User",
+                    email: session.user.email!,
+                    id: session.user.id
+                };
+                setUser(userData);
+                localStorage.setItem("taskflow_user", JSON.stringify(userData));
+            } else if (!storedUser) {
+                router.push("/login");
+            }
+        };
+
+        syncAuth();
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+            if (session?.user) {
+                const userData = {
+                    name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || "User",
+                    email: session.user.email!,
+                    id: session.user.id
+                };
+                setUser(userData);
+                localStorage.setItem("taskflow_user", JSON.stringify(userData));
+            } else {
+                setUser(null);
+                localStorage.removeItem("taskflow_user");
+                router.push("/login");
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, [router]);
 
     // Fetch initial data
     useEffect(() => {

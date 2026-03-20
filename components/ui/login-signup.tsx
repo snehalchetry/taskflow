@@ -24,6 +24,7 @@ import {
     ArrowRight,
     Chrome,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { Logo } from "@/components/ui/logo";
 import Particles from "@/components/ui/Particles";
 
@@ -77,6 +78,25 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
         } catch {
             setError("Network error. Please try again.");
         } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleOAuthLogin = async (provider: 'github' | 'google') => {
+        setIsLoading(true);
+        setError("");
+        
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider,
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                },
+            });
+
+            if (error) throw error;
+        } catch (err: any) {
+            setError(err.message || "OAuth login failed.");
             setIsLoading(false);
         }
     };
@@ -222,7 +242,7 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
                                         <button
                                             type="button"
                                             aria-label={showPassword ? "Hide password" : "Show password"}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-[#3d6666] hover:text-[#26d9d9] transition-colors cursor-pointer"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-[#3d6666] hover:text-[#26d9d9] transition-colors cursor-colors cursor-pointer"
                                             onClick={() => setShowPassword((v) => !v)}
                                         >
                                             {showPassword ? (
@@ -278,6 +298,8 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
                             <div className="grid grid-cols-2 gap-3">
                                 <Button
                                     variant="outline"
+                                    onClick={() => handleOAuthLogin('github')}
+                                    disabled={isLoading}
                                     className="h-11 rounded-xl border-[#1a3030] bg-[#0f1c1c] text-white hover:bg-[#0f1c1c]/80 hover:text-[#26d9d9] cursor-pointer"
                                     id="github-login"
                                 >
@@ -286,6 +308,8 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
                                 </Button>
                                 <Button
                                     variant="outline"
+                                    onClick={() => handleOAuthLogin('google')}
+                                    disabled={isLoading}
                                     className="h-11 rounded-xl border-[#1a3030] bg-[#0f1c1c] text-white hover:bg-[#0f1c1c]/80 hover:text-[#26d9d9] cursor-pointer"
                                     id="google-login"
                                 >

@@ -9,22 +9,38 @@ export default function AuthSync() {
     const pathname = usePathname();
 
     useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        console.log("AuthSync: Initializing...");
+        
+        const checkSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            console.log("AuthSync: Current session:", session ? "Found" : "Not Found");
             if (session?.user) {
-                // Sync to localStorage for existing dashboard logic compatibility
-                const userData = {
-                    name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || "User",
-                    email: session.user.email!,
-                    id: session.user.id
-                };
-                localStorage.setItem("taskflow_user", JSON.stringify(userData));
+                handleAuth(session);
+            }
+        };
 
-                // If user is on landing/login, send them to dashboard
-                if (pathname === "/" || pathname === "/login" || pathname === "/signup") {
-                    router.push("/dashboard");
-                }
-            } else {
-                // Handle signed out state if needed
+        const handleAuth = (session: any) => {
+            const userData = {
+                name: session.user.user_metadata.full_name || session.user.email?.split('@')[0] || "User",
+                email: session.user.email!,
+                id: session.user.id
+            };
+            console.log("AuthSync: Syncing user data:", userData.email);
+            localStorage.setItem("taskflow_user", JSON.stringify(userData));
+
+            if (pathname === "/" || pathname === "/login" || pathname === "/signup") {
+                console.log("AuthSync: Redirecting to dashboard...");
+                router.push("/dashboard");
+            }
+        };
+
+        checkSession();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            console.log("AuthSync: Auth event:", event);
+            if (session?.user) {
+                handleAuth(session);
+            } else if (event === 'SIGNED_OUT') {
                 if (pathname === "/dashboard") {
                     localStorage.removeItem("taskflow_user");
                     router.push("/login");

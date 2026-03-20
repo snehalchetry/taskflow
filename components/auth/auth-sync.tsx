@@ -13,12 +13,33 @@ export default function AuthSync() {
         
         const checkSession = async () => {
             // 1. Check for manual hash (Implicit flow fail-safe)
-            if (window.location.hash.includes("access_token")) {
-                console.log("AuthSync: Found access_token in hash, waiting for Supabase...");
+            const hash = window.location.hash;
+            if (hash && hash.includes("access_token")) {
+                console.log("AuthSync: Found access_token in hash! Manually syncing...");
+                try {
+                    // Extract tokens from hash
+                    const params = new URLSearchParams(hash.substring(1));
+                    const accessToken = params.get("access_token");
+                    const refreshToken = params.get("refresh_token");
+                    
+                    if (accessToken && refreshToken) {
+                        const { data, error } = await supabase.auth.setSession({
+                            access_token: accessToken,
+                            refresh_token: refreshToken
+                        });
+                        console.log("AuthSync: setSession result:", error ? "Error" : "Success");
+                        if (data.session) {
+                            handleAuth(data.session);
+                            return; // Stop here, handleAuth will redirect
+                        }
+                    }
+                } catch (err) {
+                    console.error("AuthSync: Error parsing hash:", err);
+                }
             }
 
             const { data: { session } } = await supabase.auth.getSession();
-            console.log("AuthSync: Current session status:", session ? "Authenticated" : "Not Found");
+            console.log("AuthSync: getSession status:", session ? "Authenticated" : "Not Found");
             if (session?.user) {
                 handleAuth(session);
             }
@@ -30,13 +51,12 @@ export default function AuthSync() {
                 email: session.user.email!,
                 id: session.user.id
             };
-            console.log("AuthSync: Syncing user:", userData.email);
+            console.log("AuthSync: User validated:", userData.email);
             localStorage.setItem("taskflow_user", JSON.stringify(userData));
 
-            // Force redirect if we are on landing/login/signup
             const currentPath = window.location.pathname;
             if (currentPath === "/" || currentPath === "/login" || currentPath === "/signup") {
-                console.log("AuthSync: Forcing redirect to /dashboard...");
+                console.log("AuthSync: Redirecting to dashboard...");
                 window.location.href = "/dashboard";
             }
         };
@@ -44,8 +64,8 @@ export default function AuthSync() {
         checkSession();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log("AuthSync: Auth event detected:", event);
-            if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED')) {
+            console.log("AuthSync: Event:", event);
+            if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
                 handleAuth(session);
             } else if (event === 'SIGNED_OUT') {
                 if (window.location.pathname === "/dashboard") {

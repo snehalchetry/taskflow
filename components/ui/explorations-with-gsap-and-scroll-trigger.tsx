@@ -838,9 +838,6 @@ export function NebulaCube() {
                     </div>
                 </section>
             </div>
-            <footer className="footer">
-                <p>TaskFlow — Modern Task Management for Developers</p>
-            </footer>
         </div>
     );
 }

@@ -1,11 +1,5 @@
 import { NextResponse } from "next/server";
-
-// In-memory store (shared with login route for demo purposes)
-// In production, use a database
-const USERS: Record<string, { name: string; email: string; password: string }> = {
-    "demo@taskflow.io": { name: "Demo User", email: "demo@taskflow.io", password: "demo123" },
-    "admin@taskflow.io": { name: "Admin", email: "admin@taskflow.io", password: "admin123" },
-};
+import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
     try {
@@ -26,25 +20,27 @@ export async function POST(request: Request) {
             );
         }
 
-        // Check if user already exists
-        if (USERS[email.toLowerCase()]) {
+        // SignUp with Supabase
+        const { data, error } = await supabase.auth.signUp({
+            email: email.toLowerCase(),
+            password,
+            options: {
+                data: {
+                    full_name: name,
+                },
+            },
+        });
+
+        if (error) {
             return NextResponse.json(
-                { error: "An account with this email already exists." },
-                { status: 409 }
+                { error: error.message },
+                { status: 400 }
             );
         }
 
-        // Create new user
-        const newUser = {
-            name,
-            email: email.toLowerCase(),
-            password,
-        };
-        USERS[email.toLowerCase()] = newUser;
-
         return NextResponse.json({
-            message: "Account created successfully!",
-            user: { name: newUser.name, email: newUser.email },
+            message: "Account created successfully! Please check your email for verification.",
+            user: { name: name, email: email.toLowerCase(), id: data.user?.id },
         });
     } catch {
         return NextResponse.json(

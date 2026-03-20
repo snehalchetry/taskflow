@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
     Card,
     CardHeader,
@@ -24,6 +24,8 @@ import {
     ArrowRight,
     Chrome,
 } from "lucide-react";
+import { Logo } from "@/components/ui/logo";
+import Particles from "@/components/ui/Particles";
 
 interface LoginCardSectionProps {
     onLogin?: (email: string, password: string) => Promise<boolean> | boolean;
@@ -37,65 +39,6 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
     const [rememberMe, setRememberMe] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
-
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        if (!canvas || !ctx) return;
-
-        const setSize = () => {
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
-        };
-        setSize();
-
-        type P = { x: number; y: number; v: number; o: number };
-        let ps: P[] = [];
-        let raf = 0;
-
-        const make = () => ({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            v: Math.random() * 0.25 + 0.05,
-            o: Math.random() * 0.35 + 0.15,
-        });
-
-        const init = () => {
-            ps = [];
-            const count = Math.floor((canvas.width * canvas.height) / 9000);
-            for (let i = 0; i < count; i++) ps.push(make());
-        };
-
-        const draw = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ps.forEach((p) => {
-                p.y -= p.v;
-                if (p.y < 0) {
-                    p.x = Math.random() * canvas.width;
-                    p.y = canvas.height + Math.random() * 40;
-                    p.v = Math.random() * 0.25 + 0.05;
-                    p.o = Math.random() * 0.35 + 0.15;
-                }
-                ctx.fillStyle = `rgba(38,217,217,${p.o * 0.6})`;
-                ctx.fillRect(p.x, p.y, 0.7, 2.2);
-            });
-            raf = requestAnimationFrame(draw);
-        };
-
-        const onResize = () => {
-            setSize();
-            init();
-        };
-
-        window.addEventListener("resize", onResize);
-        init();
-        raf = requestAnimationFrame(draw);
-        return () => {
-            window.removeEventListener("resize", onResize);
-            cancelAnimationFrame(raf);
-        };
-    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -121,7 +64,6 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
                 return;
             }
 
-            // Store user info
             if (typeof window !== "undefined") {
                 localStorage.setItem("taskflow_user", JSON.stringify(data.user));
                 if (rememberMe) {
@@ -176,11 +118,25 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
         }
       `}</style>
 
+            {/* ── Particles Background ── */}
+            <div className="absolute inset-0 z-0">
+                <Particles
+                    particleColors={["#26d9d9", "#ffffff"]}
+                    particleCount={120}
+                    particleSpread={10}
+                    speed={0.06}
+                    particleBaseSize={70}
+                    moveParticlesOnHover
+                    alphaParticles={true}
+                    disableRotation={false}
+                />
+            </div>
+
             {/* Subtle teal vignette */}
-            <div className="absolute inset-0 pointer-events-none [background:radial-gradient(80%_60%_at_50%_30%,rgba(38,217,217,0.02),transparent_60%)]" />
+            <div className="absolute inset-0 pointer-events-none z-[1] [background:radial-gradient(80%_60%_at_50%_30%,rgba(38,217,217,0.02),transparent_60%)]" />
 
             {/* Animated accent lines */}
-            <div className="accent-lines">
+            <div className="accent-lines z-[2]">
                 <div className="hline" />
                 <div className="hline" />
                 <div className="hline" />
@@ -189,22 +145,13 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
                 <div className="vline" />
             </div>
 
-            {/* Particles */}
-            <canvas
-                ref={canvasRef}
-                className="absolute inset-0 w-full h-full opacity-35 mix-blend-screen pointer-events-none"
-            />
-
             {/* Split-screen layout */}
             <div className="relative z-10 h-full w-full grid grid-cols-1 lg:grid-cols-2">
                 {/* Left side — Branding */}
                 <div className="hidden lg:flex flex-col justify-center items-start px-16 xl:px-24 border-r border-[#1a2e2e]/40">
                     <div className="max-w-md">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="bg-[#ea2a33] size-11 rounded-xl flex items-center justify-center text-white shadow-lg shadow-[#ea2a33]/20">
-                                <span className="material-symbols-outlined font-bold text-xl">layers</span>
-                            </div>
-                            <span className="text-xl font-black tracking-tight uppercase">TaskFlow</span>
+                        <div className="mb-8">
+                            <Logo className="size-11" textSize="text-xl" />
                         </div>
 
                         <h1 className="text-5xl xl:text-6xl font-black leading-[1.1] mb-6">
@@ -222,11 +169,8 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
                     <Card className="card-animate w-full max-w-md border-[#1a2e2e]/40 bg-[#0a1212]/90 backdrop-blur-xl shadow-2xl shadow-black/40 rounded-2xl">
                         <CardHeader className="space-y-1 pb-2">
                             {/* Mobile branding */}
-                            <div className="flex items-center gap-2 mb-4 lg:hidden">
-                                <div className="bg-[#ea2a33] size-9 rounded-lg flex items-center justify-center text-white">
-                                    <span className="material-symbols-outlined font-bold text-lg">layers</span>
-                                </div>
-                                <span className="text-lg font-black tracking-tight uppercase">TaskFlow</span>
+                            <div className="mb-4 lg:hidden">
+                                <Logo className="size-9" textSize="text-lg" />
                             </div>
                             <CardTitle className="text-2xl font-black text-white">Welcome back</CardTitle>
                             <CardDescription className="text-[#6a8888]">

@@ -4,6 +4,8 @@ import * as React from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Lock, Mail, User, ArrowRight } from "lucide-react";
+import { Logo } from "@/components/ui/logo";
+import Particles from "@/components/ui/Particles";
 
 export default function SignupPage() {
     const router = useRouter();
@@ -42,7 +44,6 @@ export default function SignupPage() {
                 return;
             }
 
-            // Auto-login after signup
             localStorage.setItem("taskflow_user", JSON.stringify(data.user));
             router.push("/dashboard");
         } catch {
@@ -54,16 +55,28 @@ export default function SignupPage() {
 
     return (
         <section className="fixed inset-0 bg-[#050a0a] text-white flex items-center justify-center">
-            {/* Subtle radial glow */}
-            <div className="absolute inset-0 pointer-events-none [background:radial-gradient(60%_50%_at_50%_40%,rgba(38,217,217,0.03),transparent_70%)]" />
+
+            {/* ── Particles Background ── */}
+            <div className="absolute inset-0 z-0">
+                <Particles
+                    particleColors={["#26d9d9", "#ffffff"]}
+                    particleCount={120}
+                    particleSpread={10}
+                    speed={0.06}
+                    particleBaseSize={70}
+                    moveParticlesOnHover
+                    alphaParticles={true}
+                    disableRotation={false}
+                />
+            </div>
+
+            {/* Subtle radial glow on top */}
+            <div className="absolute inset-0 pointer-events-none z-[1] [background:radial-gradient(60%_50%_at_50%_40%,rgba(38,217,217,0.03),transparent_70%)]" />
 
             <div className="relative z-10 w-full max-w-md px-6">
                 {/* Logo */}
-                <div className="flex items-center gap-3 mb-8">
-                    <div className="bg-[#ea2a33] size-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-[#ea2a33]/20">
-                        <span className="material-symbols-outlined font-bold text-lg">layers</span>
-                    </div>
-                    <span className="text-lg font-black tracking-tight uppercase">TaskFlow</span>
+                <div className="mb-8">
+                    <Logo className="size-10" textSize="text-lg" />
                 </div>
 
                 {/* Card */}

@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import ParticleBackground from "@/components/ui/particle-background";
+import Particles from "@/components/ui/Particles";
+import { Logo } from "@/components/ui/logo";
 
 const PRIORITY = {
     HIGH: "1",
@@ -14,6 +15,7 @@ type Priority = (typeof PRIORITY)[keyof typeof PRIORITY];
 
 interface Task {
     id: string;
+    user_id?: string;
     title: string;
     priority: Priority;
     time?: string;
@@ -23,13 +25,14 @@ interface Task {
 
 interface Project {
     id: string;
+    user_id?: string;
     name: string;
     color: string;
 }
 
 export default function DashboardPage() {
     const router = useRouter();
-    const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+    const [user, setUser] = useState<{ name: string; email: string; id: string } | null>(null);
 
     useEffect(() => {
         const stored = localStorage.getItem("taskflow_user");
@@ -40,37 +43,39 @@ export default function DashboardPage() {
         }
     }, [router]);
 
-    const [tasks, setTasks] = useState<Task[]>([
-        {
-            id: "1",
-            title: "Finalize Q4 Marketing Budget",
-            priority: PRIORITY.HIGH,
-            time: "2023-10-24",
-            category: "Marketing",
-            completed: false,
-        },
-        {
-            id: "2",
-            title: "Weekly Sync with Design Team",
-            priority: PRIORITY.MEDIUM,
-            time: "2023-10-24",
-            category: "Product",
-            completed: false,
-        },
-        {
-            id: "3",
-            title: "Check flight status for London",
-            priority: PRIORITY.LOW,
-            category: "Personal",
-            completed: true,
-        },
-    ]);
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const [projects, setProjects] = useState<Project[]>([
-        { id: "p1", name: "Marketing Deck", color: "#3b82f6" },
-        { id: "p2", name: "Product Launch", color: "#10b981" },
-        { id: "p3", name: "Personal CRM", color: "#f59e0b" },
-    ]);
+    // Fetch initial data
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [tasksRes, projectsRes] = await Promise.all([
+                    fetch(`/api/tasks?userId=${user.id}`),
+                    fetch(`/api/projects?userId=${user.id}`)
+                ]);
+                
+                if (tasksRes.ok && projectsRes.ok) {
+                    const [tasksData, projectsData] = await Promise.all([
+                        tasksRes.json(),
+                        projectsRes.json()
+                    ]);
+                    setTasks(tasksData);
+                    setProjects(projectsData);
+                }
+            } catch (error) {
+                console.error("Error fetching dashboard data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [user?.id]);
 
     const [newTaskTitle, setNewTaskTitle] = useState("");
     const [newTaskPriority, setNewTaskPriority] = useState<Priority>(PRIORITY.MEDIUM);
@@ -94,45 +99,106 @@ export default function DashboardPage() {
         });
     }, [tasks, searchQuery, showOnlyCompleted, activeProjectFilter]);
 
-    const addTask = () => {
-        if (!newTaskTitle.trim()) return;
+    const addTask = async () => {
+        if (!newTaskTitle.trim() || !user) return;
         setIsAdding(true);
-        setTimeout(() => {
-            const newTask: Task = {
-                id: Date.now().toString(),
-                title: newTaskTitle,
-                priority: newTaskPriority,
-                category: activeProjectFilter || "Inbox",
-                time: newTaskDate || undefined,
-                completed: false,
-            };
-            setTasks([newTask, ...tasks]);
-            setNewTaskTitle("");
-            setNewTaskDate("");
-            setNewTaskPriority(PRIORITY.MEDIUM);
+
+        try {
+            const res = await fetch("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title: newTaskTitle,
+                    priority: newTaskPriority,
+                    category: activeProjectFilter || "Inbox",
+                    time: newTaskDate || null,
+                    userId: user.id
+                }),
+            });
+
+            if (res.ok) {
+                const newTask = await res.json();
+                setTasks([newTask, ...tasks]);
+                setNewTaskTitle("");
+                setNewTaskDate("");
+                setNewTaskPriority(PRIORITY.MEDIUM);
+            }
+        } catch (error) {
+            console.error("Error adding task:", error);
+        } finally {
             setIsAdding(false);
-        }, 400);
+        }
     };
 
-    const createProject = () => {
-        if (!newProjectName.trim()) return;
-        const newProj: Project = {
-            id: `p${Date.now()}`,
-            name: newProjectName,
-            color: newProjectColor,
-        };
-        setProjects([...projects, newProj]);
-        setNewProjectName("");
-        setIsProjectModalOpen(false);
+    const createProject = async () => {
+        if (!newProjectName.trim() || !user) return;
+        
+        try {
+            const res = await fetch("/api/projects", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: newProjectName,
+                    color: newProjectColor,
+                    userId: user.id
+                }),
+            });
+
+            if (res.ok) {
+                const newProj = await res.json();
+                setProjects([...projects, newProj]);
+                setNewProjectName("");
+                setIsProjectModalOpen(false);
+            }
+        } catch (error) {
+            console.error("Error creating project:", error);
+        }
     };
 
-    const toggleTask = (id: string) => {
-        setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    const toggleTask = async (id: string) => {
+        const task = tasks.find(t => t.id === id);
+        if (!task || !user) return;
+
+        // Optimistic update
+        const originalTasks = [...tasks];
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+
+        try {
+            const res = await fetch("/api/tasks", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id,
+                    completed: !task.completed,
+                    userId: user.id
+                }),
+            });
+
+            if (!res.ok) throw new Error("Failed to update task");
+        } catch (error) {
+            console.error("Error toggling task:", error);
+            setTasks(originalTasks); // Revert on failure
+        }
     };
 
-    const deleteTask = (id: string, e: React.MouseEvent) => {
+    const deleteTask = async (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        setTasks((prev) => prev.filter((t) => t.id !== id));
+        if (!user) return;
+
+        // Optimistic update
+        const originalTasks = [...tasks];
+        setTasks(prev => prev.filter(t => t.id !== id));
+
+        try {
+            const res = await fetch(`/api/tasks?id=${id}&userId=${user.id}`, {
+                method: "DELETE",
+            });
+
+            if (!res.ok) throw new Error("Failed to delete task");
+        } catch (error) {
+            console.error("Error deleting task:", error);
+            setTasks(originalTasks); // Revert on failure
+        }
     };
 
     const handleLogout = () => {
@@ -144,12 +210,12 @@ export default function DashboardPage() {
     const pendingCount = tasks.filter((t) => !t.completed).length;
     const progressPercent = tasks.length === 0 ? 0 : Math.round((completedCount / tasks.length) * 100);
 
-    if (!user) {
+    if (!user || loading) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-[#050a0a]">
                 <div className="flex flex-col items-center gap-4">
                     <div className="size-10 border-2 border-[#26d9d9] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-[#26d9d9]/60 text-sm">Loading workspace...</span>
+                    <span className="text-[#26d9d9]/60 text-sm">{loading ? "Fetching your workspace..." : "Redirecting to login..."}</span>
                 </div>
             </div>
         );
@@ -238,11 +304,8 @@ export default function DashboardPage() {
             >
                 <div className="flex flex-col gap-7">
                     {/* Logo */}
-                    <div className="flex items-center gap-3 px-2">
-                        <div className="bg-[#ea2a33] size-9 rounded-xl flex items-center justify-center text-white shadow-lg shadow-[#ea2a33]/20">
-                            <span className="material-symbols-outlined text-lg font-bold">layers</span>
-                        </div>
-                        <span className="text-lg font-black tracking-tight uppercase">TaskFlow</span>
+                    <div className="px-2">
+                        <Logo className="size-9" textSize="text-lg" />
                     </div>
 
                     {/* Navigation */}
@@ -319,11 +382,15 @@ export default function DashboardPage() {
             <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
                 {/* Particle Background */}
                 <div className="fixed inset-0 z-0" style={{ left: "260px" }}>
-                    <ParticleBackground
-                        particleCount={45}
-                        particleColor="rgba(38, 217, 217, 0.25)"
-                        lineColor="rgba(38, 217, 217, 0.03)"
-                        maxDistance={100}
+                    <Particles
+                        particleColors={["#26d9d9", "#ffffff"]}
+                        particleCount={100}
+                        particleSpread={12}
+                        speed={0.05}
+                        particleBaseSize={60}
+                        alphaParticles={true}
+                        moveParticlesOnHover={false}
+                        disableRotation={false}
                     />
                 </div>
 

@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-
-// Mock user database — replace with real DB/auth provider later
-const MOCK_USERS = [
-    { email: "demo@taskflow.io", password: "demo123", name: "Demo User" },
-    { email: "admin@taskflow.io", password: "admin123", name: "Admin" },
-];
+import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
     try {
@@ -17,21 +12,28 @@ export async function POST(request: Request) {
             );
         }
 
-        const user = MOCK_USERS.find(
-            (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-        );
+        // SignIn with Supabase
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email.toLowerCase(),
+            password,
+        });
 
-        if (!user) {
+        if (error) {
             return NextResponse.json(
-                { error: "Invalid email or password." },
+                { error: error.message },
                 { status: 401 }
             );
         }
 
-        // Return user info (without password)
+        // Return user info
         return NextResponse.json({
             success: true,
-            user: { name: user.name, email: user.email },
+            user: { 
+                name: data.user?.user_metadata?.full_name || "User", 
+                email: data.user?.email,
+                id: data.user?.id 
+            },
+            session: data.session
         });
     } catch {
         return NextResponse.json(

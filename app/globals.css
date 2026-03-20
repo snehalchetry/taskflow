@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #26d9d9;
+  --color-accent-red: #ea2a33;
+  --color-accent-blue: #1e3a8a;
+  --color-background-light: #f9fafa;
+  --color-background-dark: #121416;
+  --color-surface-dark: #1c1f23;
+  --color-border-dark: #376262;
+
+  /* shadcn semantic color tokens */
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-card: #09090b;
+  --color-card-foreground: #fafafa;
+  --color-popover: #09090b;
+  --color-popover-foreground: #fafafa;
+  --color-primary-foreground: #09090b;
+  --color-secondary: #27272a;
+  --color-secondary-foreground: #fafafa;
+  --color-muted: #27272a;
+  --color-muted-foreground: #a1a1aa;
+  --color-accent: #27272a;
+  --color-accent-foreground: #fafafa;
+  --color-destructive: #7f1d1d;
+  --color-destructive-foreground: #fafafa;
+  --color-border: #27272a;
+  --color-input: #27272a;
+  --color-ring: #d4d4d8;
+
+  /* NebulaCube design tokens */
+  --color-nebula-primary: #0a0a0a;
+  --color-nebula-secondary: #161616;
+  --color-nebula-accent: #ff2c2c;
+  --color-nebula-text: #f5f5f5;
+  --color-nebula-text-muted: rgba(245, 245, 245, 0.7);
+  --color-nebula-border: rgba(255, 255, 255, 0.05);
+  --color-nebula-overlay: rgba(0, 0, 0, 0.5);
+
+  --font-primary: "Inter", sans-serif;
+  --font-display: "Be Vietnam Pro", sans-serif;
+  --font-serif: "EB Garamond", serif;
+  --font-public: "Public Sans", sans-serif;
+
+  --radius-DEFAULT: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    font-family: "Be Vietnam Pro", sans-serif;
+    @apply bg-background text-foreground;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+    display: inline-block;
+    line-height: 1;
+  }
+
+  .task-checkbox:checked+span {
+    text-decoration: line-through;
+    opacity: 0.5;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #376262;
+    border-radius: 10px;
+  }
+}
+
+/* ==========================================
+   NebulaCube Landing Page Styles
+   ========================================== */
+
+.content {
+  position: relative;
+  z-index: 20;
+}
+
+.section {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  position: relative;
+}
+
+.section-inner {
+  padding: 0 8%;
+  max-width: 700px;
+}
+
+.title {
+  font-family: "Be Vietnam Pro", sans-serif;
+  font-weight: 900;
+  font-size: clamp(4rem, 10vw, 8rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: #f5f5f5;
+  opacity: 0;
+  transform: translateY(60px);
+  margin-bottom: 1.5rem;
+  text-shadow: 0 0 60px rgba(38, 217, 217, 0.15);
+}
+
+.description {
+  font-family: "Public Sans", sans-serif;
+  font-size: clamp(0.95rem, 1.5vw, 1.2rem);
+  line-height: 1.7;
+  color: rgba(245, 245, 245, 0.6);
+  max-width: 480px;
+  opacity: 0;
+  transform: translateY(40px);
+}
+
+.footer {
+  position: relative;
+  z-index: 20;
+  text-align: center;
+  padding: 3rem 2rem;
+  color: rgba(245, 245, 245, 0.3);
+  font-size: 0.875rem;
+  font-family: "Public Sans", sans-serif;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}

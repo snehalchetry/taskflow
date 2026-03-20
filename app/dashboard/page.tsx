@@ -97,6 +97,16 @@ export default function DashboardPage() {
         return () => subscription.unsubscribe();
     }, [router]);
 
+    // Helper: get auth headers for API calls
+    const getAuthHeaders = async (): Promise<Record<string, string>> => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return { "Content-Type": "application/json" };
+        return {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
+        };
+    };
+
     // Fetch initial data
     useEffect(() => {
         if (!user?.id) return;
@@ -104,9 +114,10 @@ export default function DashboardPage() {
         const fetchData = async () => {
             setLoading(true);
             try {
+                const headers = await getAuthHeaders();
                 const [tasksRes, projectsRes] = await Promise.all([
-                    fetch(`/api/tasks`),
-                    fetch(`/api/projects`)
+                    fetch(`/api/tasks`, { headers }),
+                    fetch(`/api/projects`, { headers })
                 ]);
                 
                 if (tasksRes.ok && projectsRes.ok) {
@@ -168,13 +179,14 @@ export default function DashboardPage() {
         if (!newTaskTitle.trim() || !user) return;
         setIsAILoading(true);
         try {
+            const headers = await getAuthHeaders();
             const subtasks = await breakdownTask(newTaskTitle);
             if (subtasks && Array.isArray(subtasks)) {
                 // Add all subtasks sequentially
                 for (const sub of subtasks) {
                     await fetch("/api/tasks", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers,
                         body: JSON.stringify({
                             title: sub.title,
                             priority: sub.priority === "HIGH" ? PRIORITY.HIGH : sub.priority === "LOW" ? PRIORITY.LOW : PRIORITY.MEDIUM,
@@ -184,7 +196,7 @@ export default function DashboardPage() {
                     });
                 }
                 // Refresh tasks
-                const res = await fetch("/api/tasks");
+                const res = await fetch("/api/tasks", { headers });
                 if (res.ok) setTasks(await res.json());
                 setNewTaskTitle("");
             }
@@ -248,9 +260,10 @@ export default function DashboardPage() {
         setIsAdding(true);
 
         try {
+            const headers = await getAuthHeaders();
             const res = await fetch("/api/tasks", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                     title: newTaskTitle,
                     priority: newTaskPriority,
@@ -265,6 +278,7 @@ export default function DashboardPage() {
                 setNewTaskTitle("");
                 setNewTaskDate("");
                 setNewTaskPriority(PRIORITY.MEDIUM);
+                setAiPrioritySuggestion(null);
             }
         } catch (error) {
             console.error("Error adding task:", error);
@@ -277,9 +291,10 @@ export default function DashboardPage() {
         if (!newProjectName.trim() || !user) return;
         
         try {
+            const headers = await getAuthHeaders();
             const res = await fetch("/api/projects", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                     name: newProjectName,
                     color: newProjectColor,
@@ -306,9 +321,10 @@ export default function DashboardPage() {
         setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
 
         try {
+            const headers = await getAuthHeaders();
             const res = await fetch("/api/tasks", {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                     id,
                     completed: !task.completed,
@@ -331,8 +347,10 @@ export default function DashboardPage() {
         setTasks(prev => prev.filter(t => t.id !== id));
 
         try {
+            const headers = await getAuthHeaders();
             const res = await fetch(`/api/tasks?id=${id}`, {
                 method: "DELETE",
+                headers,
             });
 
             if (!res.ok) throw new Error("Failed to delete task");

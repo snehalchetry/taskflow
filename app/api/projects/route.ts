@@ -1,35 +1,43 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { supabase } from "@/lib/supabase";
+
+async function getUser(request: Request) {
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+        return null;
+    }
+    const token = authHeader.substring(7);
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return null;
+    return user;
+}
 
 export async function GET(request: Request) {
     try {
-        const supabase = await createSupabaseServerClient();
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session) {
+        const user = await getUser(request);
+        if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const { data, error } = await supabase
             .from("projects")
             .select("*")
-            .eq("user_id", session.user.id)
+            .eq("user_id", user.id)
             .order("created_at", { ascending: true });
 
         if (error) throw error;
 
         return NextResponse.json(data);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal server error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 
 export async function POST(request: Request) {
     try {
-        const supabase = await createSupabaseServerClient();
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session) {
+        const user = await getUser(request);
+        if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -42,14 +50,15 @@ export async function POST(request: Request) {
 
         const { data, error } = await supabase
             .from("projects")
-            .insert([{ name, color, user_id: session.user.id }])
+            .insert([{ name, color, user_id: user.id }])
             .select()
             .single();
 
         if (error) throw error;
 
         return NextResponse.json(data);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Internal server error";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

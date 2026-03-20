@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
     try {
-        const { searchParams } = new URL(request.url);
-        const userId = searchParams.get("userId");
+        const supabase = await createSupabaseServerClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!userId) {
+        if (!session) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const { data, error } = await supabase
             .from("tasks")
             .select("*")
-            .eq("user_id", userId)
+            .eq("user_id", session.user.id)
             .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -26,10 +26,17 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
-        const { title, priority, category, time, userId, projectId } = body;
+        const supabase = await createSupabaseServerClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!title || !userId) {
+        if (!session) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { title, priority, category, time, projectId } = body;
+
+        if (!title) {
             return NextResponse.json({ error: "Missing fields" }, { status: 400 });
         }
 
@@ -41,7 +48,7 @@ export async function POST(request: Request) {
                     priority,
                     category,
                     time: time || null,
-                    user_id: userId,
+                    user_id: session.user.id,
                     project_id: projectId || null,
                     completed: false,
                 },
@@ -59,10 +66,17 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
     try {
-        const body = await request.json();
-        const { id, completed, title, priority, userId } = body;
+        const supabase = await createSupabaseServerClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!id || !userId) {
+        if (!session) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { id, completed, title, priority } = body;
+
+        if (!id) {
             return NextResponse.json({ error: "Missing fields" }, { status: 400 });
         }
 
@@ -70,7 +84,7 @@ export async function PATCH(request: Request) {
             .from("tasks")
             .update({ completed, title, priority })
             .eq("id", id)
-            .eq("user_id", userId)
+            .eq("user_id", session.user.id)
             .select()
             .single();
 
@@ -84,11 +98,17 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
     try {
+        const supabase = await createSupabaseServerClient();
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         const { searchParams } = new URL(request.url);
         const id = searchParams.get("id");
-        const userId = searchParams.get("userId");
 
-        if (!id || !userId) {
+        if (!id) {
             return NextResponse.json({ error: "Missing fields" }, { status: 400 });
         }
 
@@ -96,7 +116,7 @@ export async function DELETE(request: Request) {
             .from("tasks")
             .delete()
             .eq("id", id)
-            .eq("user_id", userId);
+            .eq("user_id", session.user.id);
 
         if (error) throw error;
 

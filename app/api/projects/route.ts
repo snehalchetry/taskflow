@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
     try {
-        const { searchParams } = new URL(request.url);
-        const userId = searchParams.get("userId");
+        const supabase = await createSupabaseServerClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!userId) {
+        if (!session) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const { data, error } = await supabase
             .from("projects")
             .select("*")
-            .eq("user_id", userId)
+            .eq("user_id", session.user.id)
             .order("created_at", { ascending: true });
 
         if (error) throw error;
@@ -26,16 +26,23 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
-        const body = await request.json();
-        const { name, color, userId } = body;
+        const supabase = await createSupabaseServerClient();
+        const { data: { session } } = await supabase.auth.getSession();
 
-        if (!name || !color || !userId) {
+        if (!session) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { name, color } = body;
+
+        if (!name || !color) {
             return NextResponse.json({ error: "Missing fields" }, { status: 400 });
         }
 
         const { data, error } = await supabase
             .from("projects")
-            .insert([{ name, color, user_id: userId }])
+            .insert([{ name, color, user_id: session.user.id }])
             .select()
             .single();
 

@@ -92,8 +92,8 @@ export default function DashboardPage() {
             setLoading(true);
             try {
                 const [tasksRes, projectsRes] = await Promise.all([
-                    fetch(`/api/tasks?userId=${user.id}`),
-                    fetch(`/api/projects?userId=${user.id}`)
+                    fetch(`/api/tasks`),
+                    fetch(`/api/projects`)
                 ]);
                 
                 if (tasksRes.ok && projectsRes.ok) {
@@ -149,7 +149,6 @@ export default function DashboardPage() {
                     priority: newTaskPriority,
                     category: activeProjectFilter || "Inbox",
                     time: newTaskDate || null,
-                    userId: user.id
                 }),
             });
 
@@ -177,7 +176,6 @@ export default function DashboardPage() {
                 body: JSON.stringify({
                     name: newProjectName,
                     color: newProjectColor,
-                    userId: user.id
                 }),
             });
 
@@ -207,7 +205,6 @@ export default function DashboardPage() {
                 body: JSON.stringify({
                     id,
                     completed: !task.completed,
-                    userId: user.id
                 }),
             });
 
@@ -227,7 +224,7 @@ export default function DashboardPage() {
         setTasks(prev => prev.filter(t => t.id !== id));
 
         try {
-            const res = await fetch(`/api/tasks?id=${id}&userId=${user.id}`, {
+            const res = await fetch(`/api/tasks?id=${id}`, {
                 method: "DELETE",
             });
 
@@ -238,7 +235,8 @@ export default function DashboardPage() {
         }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
         localStorage.removeItem("taskflow_user");
         router.push("/login");
     };

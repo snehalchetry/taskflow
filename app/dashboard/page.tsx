@@ -166,24 +166,29 @@ export default function DashboardPage() {
 
     // Feature 1: AI Task Breakdown
     const handleAIBreakdown = async () => {
+        console.log("[AI Breakdown] clicked", { title: newTaskTitle, user: !!user });
         if (!newTaskTitle.trim() || !user) return;
         setIsAILoading(true);
         try {
+            console.log("[AI Breakdown] calling Gemini...");
             const subtasks = await breakdownTask(newTaskTitle);
+            console.log("[AI Breakdown] Gemini response:", subtasks);
             if (subtasks && Array.isArray(subtasks)) {
                 // Auto-create "AI Breakdown" project if it doesn't exist
                 const aiProjectExists = projects.some(p => p.name === "AI Breakdown");
                 if (!aiProjectExists) {
-                    const { data: newProj } = await supabase
+                    console.log("[AI Breakdown] creating AI project...");
+                    const { data: newProj, error: projError } = await supabase
                         .from("projects")
                         .insert([{ name: "AI Breakdown", color: "#8b5cf6", user_id: user.id }])
                         .select()
                         .single();
+                    console.log("[AI Breakdown] project result:", { newProj, projError });
                     if (newProj) setProjects(prev => [...prev, newProj]);
                 }
 
                 for (const sub of subtasks) {
-                    await supabase.from("tasks").insert([{
+                    const { error: taskError } = await supabase.from("tasks").insert([{
                         title: sub.title,
                         priority: sub.priority === "HIGH" ? PRIORITY.HIGH : sub.priority === "LOW" ? PRIORITY.LOW : PRIORITY.MEDIUM,
                         category: "AI Breakdown",
@@ -191,14 +196,18 @@ export default function DashboardPage() {
                         user_id: user.id,
                         completed: false,
                     }]);
+                    console.log("[AI Breakdown] inserted subtask:", sub.title, taskError ? `ERROR: ${taskError.message}` : "OK");
                 }
                 // Refresh tasks
                 const { data } = await supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
                 if (data) setTasks(data);
                 setNewTaskTitle("");
+                console.log("[AI Breakdown] done, tasks refreshed");
+            } else {
+                console.log("[AI Breakdown] Gemini returned null/non-array");
             }
         } catch (error) {
-            console.error("Error breaking down task:", error);
+            console.error("[AI Breakdown] ERROR:", error);
         } finally {
             setIsAILoading(false);
         }

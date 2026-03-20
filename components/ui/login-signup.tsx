@@ -83,6 +83,7 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
     };
 
     const handleOAuthLogin = async (provider: 'github' | 'google') => {
+        console.log(`Starting OAuth login with ${provider}...`);
         setIsLoading(true);
         setError("");
         

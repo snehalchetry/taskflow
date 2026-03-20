@@ -97,37 +97,22 @@ export default function DashboardPage() {
         return () => subscription.unsubscribe();
     }, [router]);
 
-    // Helper: get auth headers for API calls
-    const getAuthHeaders = async (): Promise<Record<string, string>> => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) return { "Content-Type": "application/json" };
-        return {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
-        };
-    };
-
-    // Fetch initial data
+    // Fetch initial data â€” direct Supabase client (no API routes)
     useEffect(() => {
         if (!user?.id) return;
 
         const fetchData = async () => {
             setLoading(true);
             try {
-                const headers = await getAuthHeaders();
-                const [tasksRes, projectsRes] = await Promise.all([
-                    fetch(`/api/tasks`, { headers }),
-                    fetch(`/api/projects`, { headers })
+                const [tasksResult, projectsResult] = await Promise.all([
+                    supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+                    supabase.from("projects").select("*").eq("user_id", user.id).order("created_at", { ascending: true }),
                 ]);
-                
-                if (tasksRes.ok && projectsRes.ok) {
-                    const [tasksData, projectsData] = await Promise.all([
-                        tasksRes.json(),
-                        projectsRes.json()
-                    ]);
-                    setTasks(tasksData);
-                    setProjects(projectsData);
-                }
+
+                if (tasksResult.data) setTasks(tasksResult.data);
+                if (projectsResult.data) setProjects(projectsResult.data);
+                if (tasksResult.error) console.error("Tasks fetch error:", tasksResult.error);
+                if (projectsResult.error) console.error("Projects fetch error:", projectsResult.error);
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
             } finally {
@@ -152,6 +137,10 @@ export default function DashboardPage() {
     const [newProjectColor, setNewProjectColor] = useState("#3b82f6");
 
     // Feature 2: Smart Priority Suggester
+    // NOTE: Disabled auto-fire to conserve Gemini API quota.
+    // The suggestPriority function fires on every keystroke (800ms debounce),
+    // which exhausts free-tier limits in seconds. Re-enable when on a paid plan.
+    /*
     useEffect(() => {
         if (!newTaskTitle.trim() || nlpEnabled || isAILoading) {
             setAiPrioritySuggestion(null);
@@ -173,31 +162,39 @@ export default function DashboardPage() {
 
         return () => clearTimeout(timeoutId);
     }, [newTaskTitle, nlpEnabled]);
+    */
 
     // Feature 1: AI Task Breakdown
     const handleAIBreakdown = async () => {
         if (!newTaskTitle.trim() || !user) return;
         setIsAILoading(true);
         try {
-            const headers = await getAuthHeaders();
             const subtasks = await breakdownTask(newTaskTitle);
             if (subtasks && Array.isArray(subtasks)) {
-                // Add all subtasks sequentially
+                // Auto-create "AI Breakdown" project if it doesn't exist
+                const aiProjectExists = projects.some(p => p.name === "AI Breakdown");
+                if (!aiProjectExists) {
+                    const { data: newProj } = await supabase
+                        .from("projects")
+                        .insert([{ name: "AI Breakdown", color: "#8b5cf6", user_id: user.id }])
+                        .select()
+                        .single();
+                    if (newProj) setProjects(prev => [...prev, newProj]);
+                }
+
                 for (const sub of subtasks) {
-                    await fetch("/api/tasks", {
-                        method: "POST",
-                        headers,
-                        body: JSON.stringify({
-                            title: sub.title,
-                            priority: sub.priority === "HIGH" ? PRIORITY.HIGH : sub.priority === "LOW" ? PRIORITY.LOW : PRIORITY.MEDIUM,
-                            category: "AI Breakdown",
-                            time: null,
-                        }),
-                    });
+                    await supabase.from("tasks").insert([{
+                        title: sub.title,
+                        priority: sub.priority === "HIGH" ? PRIORITY.HIGH : sub.priority === "LOW" ? PRIORITY.LOW : PRIORITY.MEDIUM,
+                        category: "AI Breakdown",
+                        time: null,
+                        user_id: user.id,
+                        completed: false,
+                    }]);
                 }
                 // Refresh tasks
-                const res = await fetch("/api/tasks", { headers });
-                if (res.ok) setTasks(await res.json());
+                const { data } = await supabase.from("tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+                if (data) setTasks(data);
                 setNewTaskTitle("");
             }
         } catch (error) {
@@ -255,25 +252,37 @@ export default function DashboardPage() {
         });
     }, [tasks, searchQuery, showOnlyCompleted, activeProjectFilter]);
 
+    // Group tasks by category for organized display
+    const groupedTasks = useMemo(() => {
+        const groups: Record<string, Task[]> = {};
+        filteredTasks.forEach((task) => {
+            const cat = task.category || "Inbox";
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(task);
+        });
+        return groups;
+    }, [filteredTasks]);
+
     const addTask = async () => {
         if (!newTaskTitle.trim() || !user) return;
         setIsAdding(true);
 
         try {
-            const headers = await getAuthHeaders();
-            const res = await fetch("/api/tasks", {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
+            const { data: newTask, error } = await supabase
+                .from("tasks")
+                .insert([{
                     title: newTaskTitle,
                     priority: newTaskPriority,
                     category: activeProjectFilter || "Inbox",
                     time: newTaskDate || null,
-                }),
-            });
+                    user_id: user.id,
+                    completed: false,
+                }])
+                .select()
+                .single();
 
-            if (res.ok) {
-                const newTask = await res.json();
+            if (error) throw error;
+            if (newTask) {
                 setTasks([newTask, ...tasks]);
                 setNewTaskTitle("");
                 setNewTaskDate("");
@@ -291,18 +300,14 @@ export default function DashboardPage() {
         if (!newProjectName.trim() || !user) return;
         
         try {
-            const headers = await getAuthHeaders();
-            const res = await fetch("/api/projects", {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                    name: newProjectName,
-                    color: newProjectColor,
-                }),
-            });
+            const { data: newProj, error } = await supabase
+                .from("projects")
+                .insert([{ name: newProjectName, color: newProjectColor, user_id: user.id }])
+                .select()
+                .single();
 
-            if (res.ok) {
-                const newProj = await res.json();
+            if (error) throw error;
+            if (newProj) {
                 setProjects([...projects, newProj]);
                 setNewProjectName("");
                 setIsProjectModalOpen(false);
@@ -321,20 +326,16 @@ export default function DashboardPage() {
         setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
 
         try {
-            const headers = await getAuthHeaders();
-            const res = await fetch("/api/tasks", {
-                method: "PATCH",
-                headers,
-                body: JSON.stringify({
-                    id,
-                    completed: !task.completed,
-                }),
-            });
+            const { error } = await supabase
+                .from("tasks")
+                .update({ completed: !task.completed })
+                .eq("id", id)
+                .eq("user_id", user.id);
 
-            if (!res.ok) throw new Error("Failed to update task");
+            if (error) throw error;
         } catch (error) {
             console.error("Error toggling task:", error);
-            setTasks(originalTasks); // Revert on failure
+            setTasks(originalTasks);
         }
     };
 
@@ -347,16 +348,16 @@ export default function DashboardPage() {
         setTasks(prev => prev.filter(t => t.id !== id));
 
         try {
-            const headers = await getAuthHeaders();
-            const res = await fetch(`/api/tasks?id=${id}`, {
-                method: "DELETE",
-                headers,
-            });
+            const { error } = await supabase
+                .from("tasks")
+                .delete()
+                .eq("id", id)
+                .eq("user_id", user.id);
 
-            if (!res.ok) throw new Error("Failed to delete task");
+            if (error) throw error;
         } catch (error) {
             console.error("Error deleting task:", error);
-            setTasks(originalTasks); // Revert on failure
+            setTasks(originalTasks);
         }
     };
 
@@ -370,97 +371,112 @@ export default function DashboardPage() {
     const pendingCount = tasks.filter((t) => !t.completed).length;
     const progressPercent = tasks.length === 0 ? 0 : Math.round((completedCount / tasks.length) * 100);
 
+    // Time-based greeting
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good morning";
+        if (hour < 17) return "Good afternoon";
+        return "Good evening";
+    };
+
     if (!user || loading) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-[#050a0a]">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="size-10 border-2 border-[#26d9d9] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-[#26d9d9]/60 text-sm">{loading ? "Fetching your workspace..." : "Redirecting to login..."}</span>
+                <div className="flex flex-col items-center gap-5">
+                    <div className="relative">
+                        <div className="size-12 border-2 border-[#26d9d9]/30 rounded-full" />
+                        <div className="absolute inset-0 size-12 border-2 border-[#26d9d9] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                    <span className="text-white/30 text-sm font-medium">
+                        {loading ? "Loading your workspace..." : "Redirecting..."}
+                    </span>
                 </div>
             </div>
         );
     }
 
     const priorityConfig = {
-        [PRIORITY.HIGH]: { label: "High", color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.2)" },
-        [PRIORITY.MEDIUM]: { label: "Medium", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.2)" },
-        [PRIORITY.LOW]: { label: "Low", color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.2)" },
+        [PRIORITY.HIGH]: { label: "High", color: "#ef4444", bg: "rgba(239,68,68,0.1)", gradient: "linear-gradient(180deg, #ef4444, #dc2626)" },
+        [PRIORITY.MEDIUM]: { label: "Medium", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", gradient: "linear-gradient(180deg, #f59e0b, #d97706)" },
+        [PRIORITY.LOW]: { label: "Low", color: "#64748b", bg: "rgba(100,116,139,0.1)", gradient: "linear-gradient(180deg, #64748b, #475569)" },
     };
 
     return (
         <div className="flex h-screen overflow-hidden bg-[#050a0a] text-white">
-            {/* Focus Mode Modal */}
+            {/* â”€â”€â”€ Focus Mode Modal â”€â”€â”€ */}
             {isFocusModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl p-4">
-                    <div
-                        className="w-full max-w-2xl rounded-3xl p-10 shadow-2xl border overflow-hidden relative"
-                        style={{
-                            background: "linear-gradient(135deg, rgba(8,16,16,0.95), rgba(12,24,24,0.98))",
-                            borderColor: "rgba(38,217,217,0.15)",
-                        }}
-                    >
-                        {/* Decorative glow */}
-                        <div className="absolute -top-24 -right-24 size-48 bg-[#26d9d9]/10 blur-[100px] rounded-full" />
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-2xl p-4">
+                    <div className="modal-enter w-full max-w-2xl rounded-3xl p-10 glass-strong shadow-2xl overflow-hidden relative">
+                        {/* Decorative glows */}
+                        <div className="absolute -top-32 -right-32 size-64 bg-[#26d9d9]/8 blur-[120px] rounded-full" />
+                        <div className="absolute -bottom-20 -left-20 size-40 bg-[#10b981]/5 blur-[80px] rounded-full" />
                         
                         <div className="relative z-10">
                             <div className="flex items-center justify-between mb-8">
                                 <div>
-                                    <h3 className="text-2xl font-black flex items-center gap-3">
+                                    <h3 className="text-2xl font-display italic flex items-center gap-3">
                                         <span className="material-symbols-outlined text-[#26d9d9]">auto_awesome</span>
-                                        Daily Focus Mode
+                                        Daily Focus
                                     </h3>
-                                    <p className="text-white/40 text-sm mt-1">Gemini AI selected your top priorities for today</p>
+                                    <p className="text-white/30 text-sm mt-1">AI-selected priorities for today</p>
                                 </div>
                                 <button 
                                     onClick={() => setIsFocusModalOpen(false)}
-                                    className="size-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer"
+                                    className="size-10 rounded-xl glass hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer"
                                 >
-                                    <span className="material-symbols-outlined text-sm">close</span>
+                                    <span className="material-symbols-outlined text-sm text-white/40">close</span>
                                 </button>
                             </div>
 
                             {isAILoading ? (
-                                <div className="py-20 flex flex-col items-center gap-4">
-                                    <div className="size-12 border-2 border-[#26d9d9] border-t-transparent rounded-full animate-spin" />
-                                    <p className="animate-pulse text-[#26d9d9]/60 font-medium italic">Analyzing your productivity...</p>
+                                <div className="py-20 flex flex-col items-center gap-5">
+                                    <div className="relative">
+                                        <div className="size-14 border-2 border-[#26d9d9]/20 rounded-full" />
+                                        <div className="absolute inset-0 size-14 border-2 border-[#26d9d9] border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                    <p className="text-white/25 text-sm font-medium">Analyzing your tasks...</p>
                                 </div>
                             ) : (
-                                <div className="space-y-4">
+                                <div className="space-y-3">
                                     {focusTasks.length > 0 ? (
                                         focusTasks.map((item, idx) => (
                                             <div 
                                                 key={idx} 
-                                                className="p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-[#26d9d9]/20 transition-all group"
+                                                className="task-enter p-5 rounded-2xl glass hover-lift group"
+                                                style={{ animationDelay: `${idx * 80}ms` }}
                                             >
                                                 <div className="flex items-center gap-4">
-                                                    <div className="size-10 rounded-full bg-[#26d9d9]/10 flex items-center justify-center text-[#26d9d9] font-black text-xs">
+                                                    <div className="size-10 rounded-xl flex items-center justify-center text-sm font-bold"
+                                                        style={{ background: "linear-gradient(135deg, rgba(38,217,217,0.15), rgba(16,185,129,0.1))", color: "#26d9d9" }}
+                                                    >
                                                         {idx + 1}
                                                     </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-lg group-hover:text-[#26d9d9] transition-colors">{item.title}</h4>
-                                                        <p className="text-white/40 text-sm italic mt-1 font-medium leading-relaxed">
-                                                            "{item.reason}"
-                                                        </p>
+                                                    <div className="flex-1">
+                                                        <h4 className="font-semibold text-[15px] group-hover:text-[#26d9d9] transition-colors">{item.title}</h4>
+                                                        <p className="text-white/25 text-[13px] mt-1 leading-relaxed">{item.reason}</p>
                                                     </div>
                                                 </div>
                                             </div>
                                         ))
                                     ) : (
-                                        <div className="text-center py-10 opacity-30 italic">No tasks found to analyze.</div>
+                                        <div className="text-center py-12">
+                                            <span className="material-symbols-outlined text-4xl text-white/[0.06] block mb-3">psychology</span>
+                                            <p className="text-white/20 text-sm">No tasks to analyze yet</p>
+                                        </div>
                                     )}
                                 </div>
                             )}
 
-                            <div className="mt-10">
+                            <div className="mt-8">
                                 <button
                                     onClick={() => setIsFocusModalOpen(false)}
-                                    className="w-full py-4 rounded-2xl font-black text-sm transition-all shadow-xl shadow-[#26d9d9]/10"
+                                    className="w-full py-4 rounded-2xl font-bold text-sm transition-all cursor-pointer glow-teal"
                                     style={{
                                         background: "linear-gradient(135deg, #26d9d9, #1ab3b3)",
                                         color: "#050a0a",
                                     }}
                                 >
-                                    LET'S GET TO WORK
+                                    Let&apos;s get to work
                                 </button>
                             </div>
                         </div>
@@ -468,32 +484,26 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* New Project Modal */}
+            {/* â”€â”€â”€ New Project Modal â”€â”€â”€ */}
             {isProjectModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-                    <div
-                        className="w-full max-w-md rounded-2xl p-8 shadow-2xl border"
-                        style={{
-                            background: "linear-gradient(135deg, rgba(10,18,18,0.98), rgba(15,28,28,0.98))",
-                            borderColor: "rgba(38,217,217,0.1)",
-                        }}
-                    >
-                        <h3 className="text-xl font-bold mb-1">Create New Project</h3>
-                        <p className="text-sm text-white/40 mb-6">Organize your tasks into focused workspaces</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-2xl p-4">
+                    <div className="modal-enter w-full max-w-md rounded-2xl p-8 glass-strong shadow-2xl">
+                        <h3 className="text-xl font-display italic mb-1">New project</h3>
+                        <p className="text-sm text-white/25 mb-6">Organize tasks into focused workspaces</p>
                         <div className="space-y-5">
                             <div>
-                                <label className="text-[11px] font-bold text-white/50 uppercase tracking-wider block mb-2">Project Name</label>
+                                <label className="text-[11px] font-medium text-white/30 tracking-wide block mb-2">Name</label>
                                 <input
                                     type="text"
                                     value={newProjectName}
                                     onChange={(e) => setNewProjectName(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#26d9d9]/50 focus:ring-1 focus:ring-[#26d9d9]/20 transition-all placeholder:text-white/20"
+                                    className="w-full glass rounded-xl px-4 py-3 text-sm outline-none focus:border-[#26d9d9]/40 transition-all placeholder:text-white/15"
                                     placeholder="e.g. Website Redesign"
                                     onKeyDown={(e) => e.key === "Enter" && createProject()}
                                 />
                             </div>
                             <div>
-                                <label className="text-[11px] font-bold text-white/50 uppercase tracking-wider block mb-3">Color</label>
+                                <label className="text-[11px] font-medium text-white/30 tracking-wide block mb-3">Color</label>
                                 <div className="flex gap-3">
                                     {["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#ef4444", "#06b6d4"].map((color) => (
                                         <button
@@ -502,7 +512,7 @@ export default function DashboardPage() {
                                             className="size-8 rounded-full transition-all cursor-pointer"
                                             style={{
                                                 backgroundColor: color,
-                                                boxShadow: newProjectColor === color ? `0 0 0 3px rgba(5,10,10,1), 0 0 0 5px ${color}` : "none",
+                                                boxShadow: newProjectColor === color ? `0 0 0 3px #050a0a, 0 0 0 5px ${color}, 0 0 20px ${color}40` : "none",
                                                 transform: newProjectColor === color ? "scale(1.15)" : "scale(1)",
                                             }}
                                         />
@@ -513,34 +523,28 @@ export default function DashboardPage() {
                         <div className="flex gap-3 mt-8">
                             <button
                                 onClick={() => { setIsProjectModalOpen(false); setNewProjectName(""); }}
-                                className="flex-1 py-3 rounded-xl font-semibold text-sm bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer"
+                                className="flex-1 py-3 rounded-xl font-medium text-sm glass hover:bg-white/[0.06] transition-all cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={createProject}
                                 disabled={!newProjectName.trim()}
-                                className="flex-1 py-3 rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-30"
+                                className="flex-1 py-3 rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-20 glow-teal"
                                 style={{
                                     background: "linear-gradient(135deg, #26d9d9, #1ab3b3)",
                                     color: "#050a0a",
                                 }}
                             >
-                                Create Project
+                                Create
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Sidebar */}
-            <aside
-                className="w-[260px] flex-shrink-0 flex flex-col justify-between py-6 px-5 border-r"
-                style={{
-                    background: "linear-gradient(180deg, rgba(5,10,10,0.95), rgba(8,15,15,0.98))",
-                    borderColor: "rgba(38,217,217,0.06)",
-                }}
-            >
+            {/* â”€â”€â”€ Sidebar â”€â”€â”€ */}
+            <aside className="w-[260px] flex-shrink-0 flex flex-col justify-between py-6 px-4 glass-strong border-r border-white/[0.04]">
                 <div className="flex flex-col gap-7">
                     {/* Logo */}
                     <div className="px-2">
@@ -548,50 +552,44 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Navigation */}
-                    <nav className="flex flex-col gap-1">
-                        <SidebarItem
-                            icon="space_dashboard"
-                            label="All Tasks"
-                            count={tasks.length}
+                    <nav className="flex flex-col gap-0.5">
+                        <SidebarItem icon="space_dashboard" label="All Tasks" count={tasks.length}
                             active={showOnlyCompleted === null && activeProjectFilter === null}
                             onClick={() => { setShowOnlyCompleted(null); setActiveProjectFilter(null); }}
                         />
-                        <SidebarItem
-                            icon="task_alt"
-                            label="Completed"
-                            count={completedCount}
+                        <SidebarItem icon="check_circle" label="Completed" count={completedCount}
                             active={showOnlyCompleted === true}
                             onClick={() => { setShowOnlyCompleted(true); setActiveProjectFilter(null); }}
                         />
-                        <SidebarItem
-                            icon="schedule"
-                            label="Pending"
-                            count={pendingCount}
+                        <SidebarItem icon="schedule" label="Pending" count={pendingCount}
                             active={showOnlyCompleted === false}
                             onClick={() => { setShowOnlyCompleted(false); setActiveProjectFilter(null); }}
                         />
 
-                        {/* Projects section */}
-                        <div className="mt-6 mb-2 flex items-center justify-between px-3">
-                            <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.15em]">Projects</span>
+                        {/* Projects */}
+                        <div className="mt-7 mb-2 flex items-center justify-between px-3">
+                            <span className="text-[10px] font-medium text-white/20 tracking-widest uppercase">Projects</span>
                             <button
                                 onClick={() => setIsProjectModalOpen(true)}
-                                className="size-5 rounded-md bg-white/5 hover:bg-[#26d9d9]/10 flex items-center justify-center transition-all cursor-pointer group"
+                                className="size-5 rounded-md glass hover:bg-[#26d9d9]/10 flex items-center justify-center transition-all cursor-pointer group"
                             >
-                                <span className="material-symbols-outlined text-[14px] text-white/30 group-hover:text-[#26d9d9]">add</span>
+                                <span className="material-symbols-outlined text-[13px] text-white/20 group-hover:text-[#26d9d9]">add</span>
                             </button>
                         </div>
                         {projects.map((p) => (
                             <button
                                 key={p.id}
                                 onClick={() => setActiveProjectFilter(activeProjectFilter === p.name ? null : p.name)}
-                                className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all cursor-pointer"
+                                className="flex items-center gap-3 px-3 py-2 rounded-xl transition-all cursor-pointer group"
                                 style={{
-                                    background: activeProjectFilter === p.name ? "rgba(38,217,217,0.06)" : "transparent",
+                                    background: activeProjectFilter === p.name ? "rgba(38,217,217,0.05)" : "transparent",
                                 }}
                             >
-                                <span className="size-2 rounded-full" style={{ backgroundColor: p.color }} />
-                                <span className={`text-sm ${activeProjectFilter === p.name ? "text-white font-semibold" : "text-white/40"}`}>
+                                <span
+                                    className={`size-2.5 rounded-full transition-all ${activeProjectFilter === p.name ? "pulse-dot" : ""}`}
+                                    style={{ backgroundColor: p.color }}
+                                />
+                                <span className={`text-[13px] ${activeProjectFilter === p.name ? "text-white font-medium" : "text-white/30 group-hover:text-white/50"}`}>
                                     {p.name}
                                 </span>
                             </button>
@@ -599,25 +597,28 @@ export default function DashboardPage() {
                     </nav>
                 </div>
 
-                {/* User section */}
+                {/* User Section */}
                 <div
-                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group transition-all hover:bg-white/5"
+                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group transition-all hover:bg-white/[0.03]"
                     onClick={handleLogout}
                 >
-                    <div className="size-9 rounded-lg flex items-center justify-center text-sm font-bold"
-                        style={{ background: "linear-gradient(135deg, #26d9d9, #1ab3b3)", color: "#050a0a" }}
-                    >
-                        {user.name.charAt(0).toUpperCase()}
+                    <div className="relative">
+                        <div className="size-9 rounded-xl flex items-center justify-center text-sm font-bold"
+                            style={{ background: "linear-gradient(135deg, #26d9d9, #1ab3b3)", color: "#050a0a" }}
+                        >
+                            {user.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-emerald-400 border-2 border-[#050a0a]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{user.name}</p>
-                        <p className="text-[10px] text-white/30 truncate">{user.email}</p>
+                        <p className="text-[13px] font-medium truncate">{user.name}</p>
+                        <p className="text-[10px] text-white/20 truncate">{user.email}</p>
                     </div>
-                    <span className="material-symbols-outlined text-white/20 group-hover:text-red-400 text-lg transition-colors">logout</span>
+                    <span className="material-symbols-outlined text-white/0 group-hover:text-white/20 text-[18px] transition-all">logout</span>
                 </div>
             </aside>
 
-            {/* Main Content */}
+            {/* â”€â”€â”€ Main Content â”€â”€â”€ */}
             <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
                 {/* Particle Background */}
                 <div className="fixed inset-0 z-0" style={{ left: "260px" }}>
@@ -633,77 +634,80 @@ export default function DashboardPage() {
                     />
                 </div>
 
-                {/* Header */}
-                <header
-                    className="sticky top-0 z-20 px-8 py-5 flex items-center justify-between border-b"
-                    style={{
-                        background: "rgba(5,10,10,0.85)",
-                        backdropFilter: "blur(20px)",
-                        borderColor: "rgba(38,217,217,0.06)",
-                    }}
+                {/* Header â€” Greeting Hero */}
+                <header className="sticky top-0 z-20 px-8 py-6 border-b border-white/[0.04]"
+                    style={{ background: "rgba(5,10,10,0.8)", backdropFilter: "blur(20px)" }}
                 >
-                    <div>
-                        <h2 className="text-2xl font-bold">
-                            {activeProjectFilter || "Workspace"}
-                        </h2>
-                        <p className="text-white/30 text-sm mt-0.5">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="relative">
-                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-white/25 text-lg">search</span>
-                            <input
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-10 pr-4 py-2.5 bg-white/5 border border-white/5 rounded-xl text-sm w-56 outline-none focus:border-[#26d9d9]/30 focus:bg-white/[0.07] transition-all placeholder:text-white/20"
-                                placeholder="Search tasks..."
-                                type="text"
-                            />
+                    <div className="flex items-end justify-between">
+                        <div>
+                            <h1 className="text-3xl font-display italic tracking-tight text-white/90">
+                                {getGreeting()}, {user.name.split(" ")[0]}
+                            </h1>
+                            <p className="text-white/25 text-[13px] mt-1.5 font-medium">
+                                {pendingCount === 0
+                                    ? "All caught up â€” take a break âœ¨"
+                                    : `${pendingCount} task${pendingCount > 1 ? "s" : ""} remaining Â· ${completedCount} completed`
+                                }
+                            </p>
                         </div>
-                        <button
-                            onClick={openFocusMode}
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#26d9d9]/10 border border-[#26d9d9]/20 text-[#26d9d9] hover:bg-[#26d9d9]/20 transition-all font-bold text-xs"
-                        >
-                            <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                            Focus Mode
-                        </button>
-                        <button
-                            onClick={() => { setShowOnlyCompleted(null); setActiveProjectFilter(null); setSearchQuery(""); }}
-                            className="size-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 hover:border-white/10 transition-all cursor-pointer"
-                        >
-                            <span className="material-symbols-outlined text-white/40 text-lg">tune</span>
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <div className="relative">
+                                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-white/15 text-[16px]">search</span>
+                                <input
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-10 pr-4 py-2.5 glass rounded-xl text-[13px] w-52 outline-none focus:border-[#26d9d9]/20 focus:glow-teal transition-all placeholder:text-white/15"
+                                    placeholder="Search..."
+                                    type="text"
+                                />
+                            </div>
+                            <button
+                                onClick={openFocusMode}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-all cursor-pointer hover-lift"
+                                style={{
+                                    background: "linear-gradient(135deg, rgba(38,217,217,0.12), rgba(38,217,217,0.06))",
+                                    border: "1px solid rgba(38,217,217,0.15)",
+                                    color: "#26d9d9",
+                                }}
+                            >
+                                <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                                Focus Mode
+                            </button>
+                        </div>
                     </div>
                 </header>
 
                 {/* Content Grid */}
                 <div className="relative z-[1] flex-1 p-8">
-                    <div className="max-w-6xl mx-auto grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-8">
-                        {/* Left Column — Tasks */}
+                    <div className="max-w-6xl mx-auto grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-8">
+                        {/* Left Column */}
                         <div className="space-y-6">
-                            {/* Stats Row */}
+                            {/* Stat Cards â€” Gradient Glass */}
                             <div className="grid grid-cols-3 gap-4">
-                                <StatCard label="Total Tasks" value={tasks.length} icon="assignment" color="#26d9d9" />
-                                <StatCard label="Completed" value={completedCount} icon="check_circle" color="#10b981" />
-                                <StatCard label="Pending" value={pendingCount} icon="pending" color="#f59e0b" />
+                                <StatCard label="Total" value={tasks.length} icon="assignment"
+                                    gradient="linear-gradient(135deg, rgba(38,217,217,0.1), rgba(38,217,217,0.03))"
+                                    glowColor="rgba(38,217,217,0.08)" iconColor="#26d9d9" />
+                                <StatCard label="Done" value={completedCount} icon="check_circle"
+                                    gradient="linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.03))"
+                                    glowColor="rgba(16,185,129,0.08)" iconColor="#10b981" />
+                                <StatCard label="Remaining" value={pendingCount} icon="pending"
+                                    gradient="linear-gradient(135deg, rgba(245,158,11,0.1), rgba(245,158,11,0.03))"
+                                    glowColor="rgba(245,158,11,0.08)" iconColor="#f59e0b" />
                             </div>
 
-                            {/* Add Task Card */}
-                            <div
-                                className="p-5 rounded-2xl border space-y-4"
-                                style={{
-                                    background: "rgba(255,255,255,0.02)",
-                                    borderColor: "rgba(38,217,217,0.08)",
-                                }}
-                            >
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="flex-1 flex items-center gap-3 group">
-                                        <div className="size-8 rounded-lg bg-[#26d9d9]/10 flex items-center justify-center group-focus-within:bg-[#26d9d9]/20 transition-all">
-                                            <span className="material-symbols-outlined text-[#26d9d9] text-lg">
-                                                {nlpEnabled ? "magic_button" : "add_task"}
+                            {/* Add Task â€” Floating Glass Bar */}
+                            <div className="p-5 rounded-2xl glass hover:border-white/[0.08] transition-all group/add focus-within:glow-teal focus-within:border-[#26d9d9]/15">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex-1 flex items-center gap-3">
+                                        <div className="size-8 rounded-lg flex items-center justify-center transition-all"
+                                            style={{ background: "linear-gradient(135deg, rgba(38,217,217,0.12), rgba(38,217,217,0.05))" }}
+                                        >
+                                            <span className="material-symbols-outlined text-[#26d9d9] text-[16px]">
+                                                {nlpEnabled ? "magic_button" : "add"}
                                             </span>
                                         </div>
                                         <input
-                                            className="flex-1 bg-transparent text-base font-medium placeholder:text-white/20 outline-none"
+                                            className="flex-1 bg-transparent text-[14px] font-medium placeholder:text-white/15 outline-none text-white/80"
                                             placeholder={nlpEnabled ? "e.g. Call John tomorrow 3pm high priority" : `Add a task${activeProjectFilter ? ` to ${activeProjectFilter}` : ""}...`}
                                             type="text"
                                             value={newTaskTitle}
@@ -714,69 +718,73 @@ export default function DashboardPage() {
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={() => setNlpEnabled(!nlpEnabled)}
-                                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${nlpEnabled ? "bg-[#26d9d9] text-[#050a0a]" : "bg-white/5 text-white/30 hover:bg-white/10"}`}
+                                            className={`px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-wider transition-all cursor-pointer ${nlpEnabled ? "text-[#050a0a] glow-teal" : "glass text-white/25 hover:text-white/40"}`}
+                                            style={nlpEnabled ? { background: "linear-gradient(135deg, #26d9d9, #1ab3b3)" } : {}}
                                         >
-                                            AI NLP
+                                            NLP
                                         </button>
                                         <button
                                             onClick={handleAIBreakdown}
                                             disabled={isAILoading || !newTaskTitle.trim()}
-                                            className="size-8 rounded-lg bg-white/5 hover:bg-[#26d9d9]/10 border border-white/5 hover:border-[#26d9d9]/20 flex items-center justify-center transition-all group disabled:opacity-20 cursor-pointer"
+                                            className="size-8 rounded-lg glass hover:bg-[#26d9d9]/10 hover:border-[#26d9d9]/15 flex items-center justify-center transition-all group disabled:opacity-15 cursor-pointer"
                                             title="AI Breakdown"
                                         >
-                                            <span className="material-symbols-outlined text-base text-white/40 group-hover:text-[#26d9d9]">
+                                            <span className="material-symbols-outlined text-[14px] text-white/25 group-hover:text-[#26d9d9]">
                                                 {isAILoading ? "sync" : "temp_preferences_custom"}
                                             </span>
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex flex-wrap items-center justify-between pt-3 border-t border-white/5 gap-4">
+                                <div className="flex flex-wrap items-center justify-between pt-4 mt-4 border-t border-white/[0.04] gap-4">
                                     <div className="flex flex-wrap gap-3 items-center">
-                                        <div className="flex bg-white/5 rounded-lg p-0.5 gap-0.5 relative">
+                                        <div className="flex glass rounded-lg p-0.5 gap-0.5 relative">
                                             {aiPrioritySuggestion && (
                                                 <div 
-                                                    className="absolute -top-12 left-0 animate-bounce cursor-pointer z-10" 
+                                                    className="absolute -top-11 left-0 animate-bounce cursor-pointer z-10" 
                                                     onClick={() => setNewTaskPriority(aiPrioritySuggestion)}
                                                 >
-                                                    <div className="bg-[#26d9d9] text-[#050a0a] text-[9px] font-black px-2 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xl shadow-[#26d9d9]/20 whitespace-nowrap">
-                                                        <span className="material-symbols-outlined text-[12px]">auto_awesome</span>
-                                                        AI SUGGESTS: {aiPrioritySuggestion === PRIORITY.HIGH ? "HIGH" : aiPrioritySuggestion === PRIORITY.LOW ? "LOW" : "MEDIUM"}
+                                                    <div className="text-[#050a0a] text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 glow-teal whitespace-nowrap"
+                                                        style={{ background: "linear-gradient(135deg, #26d9d9, #1ab3b3)" }}
+                                                    >
+                                                        <span className="material-symbols-outlined text-[11px]">auto_awesome</span>
+                                                        AI: {aiPrioritySuggestion === PRIORITY.HIGH ? "HIGH" : aiPrioritySuggestion === PRIORITY.LOW ? "LOW" : "MED"}
                                                     </div>
                                                 </div>
                                             )}
-                                            {(["LOW", "MED", "HIGH"] as const).map((label, idx) => {
+                                            {(["Low", "Med", "High"] as const).map((label, idx) => {
                                                 const val = [PRIORITY.LOW, PRIORITY.MEDIUM, PRIORITY.HIGH][idx];
-                                                const colors = ["#6b7280", "#f59e0b", "#ef4444"];
+                                                const dotColors = ["#64748b", "#f59e0b", "#ef4444"];
                                                 const isActive = newTaskPriority === val;
                                                 return (
                                                     <button
                                                         key={label}
                                                         onClick={() => setNewTaskPriority(val)}
-                                                        className="px-3 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold rounded-md transition-all cursor-pointer"
                                                         style={{
-                                                            background: isActive ? `${colors[idx]}20` : "transparent",
-                                                            color: isActive ? colors[idx] : "rgba(255,255,255,0.3)",
+                                                            background: isActive ? `${dotColors[idx]}15` : "transparent",
+                                                            color: isActive ? dotColors[idx] : "rgba(255,255,255,0.25)",
                                                         }}
                                                     >
+                                                        <span className="size-1.5 rounded-full" style={{ backgroundColor: dotColors[idx], opacity: isActive ? 1 : 0.4 }} />
                                                         {label}
                                                     </button>
                                                 );
                                             })}
                                         </div>
-                                        <div className="flex items-center gap-2 text-white/30">
-                                            <span className="material-symbols-outlined text-sm">calendar_month</span>
+                                        <div className="flex items-center gap-2 text-white/20">
+                                            <span className="material-symbols-outlined text-[14px]">calendar_month</span>
                                             <input
                                                 type="date"
                                                 value={newTaskDate}
                                                 onChange={(e) => setNewTaskDate(e.target.value)}
-                                                className="bg-transparent border-none text-xs text-white/50 outline-none cursor-pointer"
+                                                className="bg-transparent border-none text-[11px] text-white/35 outline-none cursor-pointer"
                                             />
                                         </div>
                                     </div>
                                     <button
                                         onClick={addTask}
                                         disabled={isAdding || !newTaskTitle.trim()}
-                                        className="px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-20"
+                                        className="px-5 py-2 rounded-xl text-[11px] font-bold tracking-wide transition-all cursor-pointer disabled:opacity-15 glow-teal hover-lift"
                                         style={{
                                             background: "linear-gradient(135deg, #26d9d9, #1ab3b3)",
                                             color: "#050a0a",
@@ -791,153 +799,165 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
-                            {/* Task List */}
-                            <div className="space-y-2">
-                                {filteredTasks.length === 0 ? (
-                                    <div className="text-center py-16">
-                                        <span className="material-symbols-outlined text-4xl text-white/10 mb-3 block">inbox</span>
-                                        <p className="text-white/20 text-sm">No tasks found</p>
+                            {/* Task List â€” Grouped by Category */}
+                            <div className="space-y-7">
+                                {Object.keys(groupedTasks).length === 0 ? (
+                                    <div className="text-center py-24">
+                                        <span className="material-symbols-outlined text-5xl text-white/[0.04] block mb-4">inventory_2</span>
+                                        <p className="text-white/20 text-sm font-medium">Nothing here yet</p>
+                                        <p className="text-white/10 text-xs mt-1">Add your first task above to get started</p>
                                     </div>
                                 ) : (
-                                    filteredTasks.map((task, index) => (
-                                        <div
-                                            key={task.id}
-                                            onClick={() => toggleTask(task.id)}
-                                            className="group flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer"
-                                            style={{
-                                                background: task.completed ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.03)",
-                                                borderColor: task.completed ? "rgba(255,255,255,0.03)" : "rgba(38,217,217,0.06)",
-                                                opacity: task.completed ? 0.5 : 1,
-                                                animationDelay: `${index * 50}ms`,
-                                            }}
-                                        >
-                                            <div
-                                                className="flex items-center justify-center size-5 rounded-full border-2 transition-all flex-shrink-0"
-                                                style={{
-                                                    borderColor: task.completed ? "#10b981" : "rgba(255,255,255,0.15)",
-                                                    background: task.completed ? "#10b981" : "transparent",
-                                                }}
-                                            >
-                                                {task.completed && (
-                                                    <span className="material-symbols-outlined text-[12px] text-[#050a0a] font-bold">check</span>
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <span className={`text-sm font-medium block ${task.completed ? "line-through text-white/30" : "text-white/80"}`}>
-                                                    {task.title}
-                                                </span>
-                                                <div className="flex items-center gap-3 mt-1.5">
-                                                    <span
-                                                        className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md"
-                                                        style={{
-                                                            background: priorityConfig[task.priority].bg,
-                                                            color: priorityConfig[task.priority].color,
-                                                            border: `1px solid ${priorityConfig[task.priority].border}`,
-                                                        }}
-                                                    >
-                                                        P{task.priority}
-                                                    </span>
-                                                    {task.time && (
-                                                        <span className="text-[10px] text-white/25 flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-[11px]">calendar_today</span>
-                                                            {task.time}
-                                                        </span>
-                                                    )}
-                                                    <span className="text-[10px] text-white/20 px-2 py-0.5 rounded-md bg-white/5">{task.category}</span>
+                                    Object.entries(groupedTasks).map(([category, categoryTasks]) => {
+                                        const project = projects.find(p => p.name === category);
+                                        const categoryColor = project?.color || "#26d9d9";
+                                        return (
+                                            <div key={category} className="fade-in">
+                                                {/* Category Header */}
+                                                <div className="flex items-center gap-3 mb-3 px-1">
+                                                    <span className="size-2 rounded-full" style={{ backgroundColor: categoryColor }} />
+                                                    <span className="text-[11px] font-semibold text-white/35 tracking-wide">{category}</span>
+                                                    <span className="text-[10px] text-white/15 font-medium">{categoryTasks.length}</span>
+                                                    <div className="flex-1 h-px bg-white/[0.03]" />
+                                                </div>
+
+                                                {/* Tasks */}
+                                                <div className="space-y-1.5">
+                                                    {categoryTasks.map((task, index) => (
+                                                        <div
+                                                            key={task.id}
+                                                            onClick={() => toggleTask(task.id)}
+                                                            className="task-enter group flex items-center gap-4 px-4 py-3.5 rounded-xl glass hover-lift cursor-pointer relative overflow-hidden"
+                                                            style={{
+                                                                opacity: task.completed ? 0.4 : 1,
+                                                                animationDelay: `${index * 50}ms`,
+                                                            }}
+                                                        >
+                                                            {/* Priority gradient left border */}
+                                                            <div
+                                                                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full"
+                                                                style={{ background: priorityConfig[task.priority].gradient }}
+                                                            />
+
+                                                            {/* Checkbox */}
+                                                            <div
+                                                                className={`flex items-center justify-center size-[18px] rounded-full border-[1.5px] transition-all flex-shrink-0 ml-1 ${task.completed ? "check-bounce" : ""}`}
+                                                                style={{
+                                                                    borderColor: task.completed ? "#10b981" : "rgba(255,255,255,0.1)",
+                                                                    background: task.completed ? "#10b981" : "transparent",
+                                                                }}
+                                                            >
+                                                                {task.completed && (
+                                                                    <span className="material-symbols-outlined text-[10px] text-[#050a0a] font-bold">check</span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Content */}
+                                                            <div className="flex-1 min-w-0">
+                                                                <span className={`text-[13px] font-medium block leading-snug ${task.completed ? "line-through text-white/20" : "text-white/70 group-hover:text-white/90"}`}>
+                                                                    {task.title}
+                                                                </span>
+                                                                <div className="flex items-center gap-2.5 mt-1">
+                                                                    <span className="flex items-center gap-1 text-[9px] font-medium" style={{ color: `${priorityConfig[task.priority].color}90` }}>
+                                                                        <span className="size-1.5 rounded-full" style={{ backgroundColor: priorityConfig[task.priority].color }} />
+                                                                        {priorityConfig[task.priority].label}
+                                                                    </span>
+                                                                    {task.time && (
+                                                                        <span className="text-[10px] text-white/15 flex items-center gap-1">
+                                                                            <span className="material-symbols-outlined text-[9px]">schedule</span>
+                                                                            {task.time}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Delete */}
+                                                            <button
+                                                                onClick={(e) => deleteTask(task.id, e)}
+                                                                className="material-symbols-outlined text-white/0 group-hover:text-white/10 hover:!text-red-400/70 transition-all text-[15px] cursor-pointer"
+                                                            >
+                                                                close
+                                                            </button>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={(e) => deleteTask(task.id, e)}
-                                                className="material-symbols-outlined text-white/10 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all text-lg cursor-pointer"
-                                            >
-                                                delete
-                                            </button>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>
 
-                        {/* Right Column — Widgets */}
-                        <div className="space-y-6">
+                        {/* Right Column â€” Widgets */}
+                        <div className="space-y-5">
                             {/* Progress Ring */}
-                            <div
-                                className="p-6 rounded-2xl border flex flex-col items-center"
-                                style={{
-                                    background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(38,217,217,0.02))",
-                                    borderColor: "rgba(38,217,217,0.08)",
-                                }}
-                            >
-                                <h3 className="text-[11px] font-bold text-white/30 uppercase tracking-[0.15em] mb-6 w-full">Daily Focus</h3>
-                                <div className="relative size-36 flex items-center justify-center">
+                            <div className="p-6 rounded-2xl glass flex flex-col items-center">
+                                <h3 className="text-[11px] font-medium text-white/20 tracking-wide mb-5 w-full">Progress</h3>
+                                <div className="relative size-32 flex items-center justify-center">
                                     <svg className="size-full -rotate-90">
-                                        <circle cx="72" cy="72" fill="transparent" r="62" stroke="rgba(255,255,255,0.04)" strokeWidth="8" />
+                                        <circle cx="64" cy="64" fill="transparent" r="56" stroke="rgba(255,255,255,0.03)" strokeWidth="6" />
                                         <circle
-                                            cx="72"
-                                            cy="72"
-                                            fill="transparent"
-                                            r="62"
-                                            stroke="url(#progressGradient)"
-                                            strokeWidth="10"
-                                            strokeDasharray={2 * Math.PI * 62}
-                                            strokeDashoffset={2 * Math.PI * 62 * (1 - progressPercent / 100)}
+                                            cx="64" cy="64" fill="transparent" r="56"
+                                            stroke="url(#progressGrad)"
+                                            strokeWidth="7"
+                                            strokeDasharray={2 * Math.PI * 56}
+                                            strokeDashoffset={2 * Math.PI * 56 * (1 - progressPercent / 100)}
                                             strokeLinecap="round"
                                             className="transition-all duration-1000 ease-out"
                                         />
                                         <defs>
-                                            <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                                                 <stop offset="0%" stopColor="#26d9d9" />
                                                 <stop offset="100%" stopColor="#10b981" />
                                             </linearGradient>
                                         </defs>
                                     </svg>
                                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                        <span className="text-3xl font-black text-white">{progressPercent}%</span>
-                                        <span className="text-[9px] font-bold text-white/25 tracking-widest mt-0.5">COMPLETE</span>
+                                        <span className="text-2xl font-bold text-white/80 tracking-tight">{progressPercent}%</span>
+                                        <span className="text-[9px] text-white/15 font-medium tracking-wider mt-0.5">complete</span>
                                     </div>
                                 </div>
-                                <p className="text-sm text-white/30 mt-5">
-                                    {pendingCount === 0 ? "All done! 🎉" : `${pendingCount} task${pendingCount > 1 ? "s" : ""} remaining`}
+                                <p className="text-[12px] text-white/20 mt-4 font-medium">
+                                    {pendingCount === 0 ? "All done! âœ¨" : `${pendingCount} remaining`}
                                 </p>
                             </div>
 
-                            {/* Quick Stats */}
-                            <div
-                                className="p-6 rounded-2xl border"
-                                style={{
-                                    background: "rgba(255,255,255,0.02)",
-                                    borderColor: "rgba(38,217,217,0.08)",
-                                }}
-                            >
-                                <h3 className="text-[11px] font-bold text-white/30 uppercase tracking-[0.15em] mb-4">By Priority</h3>
+                            {/* Priority Breakdown */}
+                            <div className="p-6 rounded-2xl glass">
+                                <h3 className="text-[11px] font-medium text-white/20 tracking-wide mb-4">By priority</h3>
                                 <div className="space-y-3">
                                     {[PRIORITY.HIGH, PRIORITY.MEDIUM, PRIORITY.LOW].map((p) => {
                                         const count = tasks.filter((t) => t.priority === p && !t.completed).length;
                                         const config = priorityConfig[p];
+                                        const barWidth = tasks.length > 0 ? Math.max(4, (count / Math.max(pendingCount, 1)) * 100) : 0;
                                         return (
-                                            <div key={p} className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="size-2 rounded-full" style={{ backgroundColor: config.color }} />
-                                                    <span className="text-xs text-white/40">{config.label}</span>
+                                            <div key={p} className="space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="size-1.5 rounded-full" style={{ backgroundColor: config.color }} />
+                                                        <span className="text-[11px] text-white/30">{config.label}</span>
+                                                    </div>
+                                                    <span className="text-[11px] font-semibold text-white/40">{count}</span>
                                                 </div>
-                                                <span className="text-xs font-bold text-white/60">{count}</span>
+                                                <div className="h-1 rounded-full bg-white/[0.03] overflow-hidden">
+                                                    <div
+                                                        className="h-full rounded-full transition-all duration-700 ease-out"
+                                                        style={{ width: `${barWidth}%`, background: config.gradient }}
+                                                    />
+                                                </div>
                                             </div>
                                         );
                                     })}
                                 </div>
                             </div>
 
-                            {/* New Project Button */}
+                            {/* New Project CTA */}
                             <button
                                 onClick={() => setIsProjectModalOpen(true)}
-                                className="w-full py-4 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all cursor-pointer border flex items-center justify-center gap-3 group"
-                                style={{
-                                    background: "linear-gradient(135deg, rgba(38,217,217,0.08), rgba(38,217,217,0.04))",
-                                    borderColor: "rgba(38,217,217,0.15)",
-                                }}
+                                className="w-full py-3.5 rounded-2xl text-[11px] font-semibold tracking-wide transition-all cursor-pointer glass hover:bg-white/[0.04] flex items-center justify-center gap-2 group"
                             >
-                                <span className="material-symbols-outlined text-[#26d9d9] text-lg group-hover:rotate-90 transition-transform duration-300">add</span>
-                                <span className="text-[#26d9d9]">New Project</span>
+                                <span className="material-symbols-outlined text-[#26d9d9]/60 text-[16px] group-hover:rotate-90 transition-transform duration-300">add</span>
+                                <span className="text-white/30 group-hover:text-white/50 transition-colors">New project</span>
                             </button>
                         </div>
                     </div>
@@ -947,32 +967,36 @@ export default function DashboardPage() {
     );
 }
 
-/* ─── Sub-components ─── */
+/* â”€â”€â”€ Sub-components â”€â”€â”€ */
 
 function SidebarItem({ icon, label, count, active, onClick }: { icon: string; label: string; count?: number; active: boolean; onClick: () => void }) {
     return (
         <button
             onClick={onClick}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer"
-            style={{
-                background: active ? "rgba(38,217,217,0.08)" : "transparent",
-            }}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all cursor-pointer relative"
+            style={{ background: active ? "rgba(38,217,217,0.05)" : "transparent" }}
         >
+            {/* Active indicator â€” glowing left bar */}
+            {active && (
+                <div className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full"
+                    style={{ background: "linear-gradient(180deg, #26d9d9, transparent)", boxShadow: "0 0 8px rgba(38,217,217,0.3)" }}
+                />
+            )}
             <span
-                className="material-symbols-outlined text-lg"
-                style={{ color: active ? "#26d9d9" : "rgba(255,255,255,0.25)" }}
+                className="material-symbols-outlined text-[18px] transition-colors"
+                style={{ color: active ? "#26d9d9" : "rgba(255,255,255,0.18)" }}
             >
                 {icon}
             </span>
-            <span className={`text-sm flex-1 text-left ${active ? "text-white font-semibold" : "text-white/40"}`}>
+            <span className={`text-[13px] flex-1 text-left transition-colors ${active ? "text-white/90 font-medium" : "text-white/30"}`}>
                 {label}
             </span>
             {count !== undefined && (
                 <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-md"
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-md transition-all"
                     style={{
-                        background: active ? "rgba(38,217,217,0.15)" : "rgba(255,255,255,0.05)",
-                        color: active ? "#26d9d9" : "rgba(255,255,255,0.3)",
+                        background: active ? "rgba(38,217,217,0.1)" : "rgba(255,255,255,0.03)",
+                        color: active ? "#26d9d9" : "rgba(255,255,255,0.2)",
                     }}
                 >
                     {count}
@@ -982,25 +1006,28 @@ function SidebarItem({ icon, label, count, active, onClick }: { icon: string; la
     );
 }
 
-function StatCard({ label, value, icon, color }: { label: string; value: number; icon: string; color: string }) {
+function StatCard({ label, value, icon, gradient, glowColor, iconColor }: {
+    label: string; value: number; icon: string; gradient: string; glowColor: string; iconColor: string;
+}) {
     return (
         <div
-            className="p-4 rounded-xl border flex items-center gap-4"
+            className="p-4 rounded-2xl flex items-center gap-4 shimmer hover-lift transition-all"
             style={{
-                background: "rgba(255,255,255,0.02)",
-                borderColor: `${color}15`,
+                background: gradient,
+                border: `1px solid ${glowColor}`,
+                boxShadow: `0 4px 20px ${glowColor}`,
             }}
         >
-            <div
-                className="size-10 rounded-xl flex items-center justify-center"
-                style={{ background: `${color}12` }}
+            <div className="size-10 rounded-xl flex items-center justify-center"
+                style={{ background: `${iconColor}15` }}
             >
-                <span className="material-symbols-outlined text-lg" style={{ color }}>{icon}</span>
+                <span className="material-symbols-outlined text-[18px]" style={{ color: iconColor }}>{icon}</span>
             </div>
             <div>
-                <p className="text-2xl font-black">{value}</p>
-                <p className="text-[10px] text-white/30 font-semibold uppercase tracking-wider">{label}</p>
+                <p className="text-2xl font-bold tracking-tight">{value}</p>
+                <p className="text-[10px] text-white/25 font-medium tracking-wide">{label}</p>
             </div>
         </div>
     );
 }
+

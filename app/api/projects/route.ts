@@ -1,28 +1,43 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
 
-async function getUser(request: Request) {
+/**
+ * Hybrid auth: tries cookie-based auth first (OAuth callback flow),
+ * then falls back to Bearer token auth (hash-fragment login flow).
+ */
+async function getAuthenticatedClient(request: Request) {
+    // 1. Try cookie-based auth (preferred)
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) return { supabase, user };
+
+    // 2. Fallback: Bearer token auth (for hash-fragment sessions)
     const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-        return null;
+    if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.substring(7);
+        const anonClient = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const { data: { user: tokenUser } } = await anonClient.auth.getUser(token);
+        if (tokenUser) return { supabase: anonClient, user: tokenUser };
     }
-    const token = authHeader.substring(7);
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) return null;
-    return user;
+
+    return null;
 }
 
 export async function GET(request: Request) {
     try {
-        const user = await getUser(request);
-        if (!user) {
+        const auth = await getAuthenticatedClient(request);
+        if (!auth) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await auth.supabase
             .from("projects")
             .select("*")
-            .eq("user_id", user.id)
+            .eq("user_id", auth.user.id)
             .order("created_at", { ascending: true });
 
         if (error) throw error;
@@ -36,8 +51,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
     try {
-        const user = await getUser(request);
-        if (!user) {
+        const auth = await getAuthenticatedClient(request);
+        if (!auth) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -48,9 +63,9 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Missing fields" }, { status: 400 });
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await auth.supabase
             .from("projects")
-            .insert([{ name, color, user_id: user.id }])
+            .insert([{ name, color, user_id: auth.user.id }])
             .select()
             .single();
 

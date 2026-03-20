@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthSync from "@/components/auth/auth-sync";
 
 export const metadata: Metadata = {
     title: "TaskFlow — Modern Task Management",
@@ -25,7 +26,10 @@ export default function RootLayout({
                     rel="stylesheet"
                 />
             </head>
-            <body className="min-h-screen antialiased">{children}</body>
+            <body className="min-h-screen antialiased">
+                <AuthSync />
+                {children}
+            </body>
         </html>
     );
 }

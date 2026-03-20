@@ -32,6 +32,7 @@ export async function POST(request: Request) {
         });
 
         if (error) {
+            console.error("Supabase Signup Error:", error);
             return NextResponse.json(
                 { error: error.message },
                 { status: 400 }
@@ -42,9 +43,10 @@ export async function POST(request: Request) {
             message: "Account created successfully! Please check your email for verification.",
             user: { name: name, email: email.toLowerCase(), id: data.user?.id },
         });
-    } catch {
+    } catch (err: any) {
+        console.error("Signup Route Error:", err);
         return NextResponse.json(
-            { error: "Invalid request." },
+            { error: err.message || "Invalid request." },
             { status: 400 }
         );
     }

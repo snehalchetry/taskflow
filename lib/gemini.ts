@@ -9,21 +9,26 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
  * Breaks a big goal into 3-6 subtasks.
  */
 export async function breakdownTask(goal: string) {
+    console.log("[Gemini] breakdownTask called, API_KEY present:", !!API_KEY, "key length:", API_KEY.length);
     if (!API_KEY) return null;
     try {
         const prompt = `Break down this task/goal into 3-6 actionable subtasks: "${goal}". 
         Return ONLY a JSON array of objects with the following format: 
         [{"title": "Subtask Name", "priority": "HIGH" | "MEDIUM" | "LOW"}]`;
         
+        console.log("[Gemini] sending request...");
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
+        console.log("[Gemini] raw response text:", text);
         
         // Clean up the response if it contains markdown code blocks
         const cleanedText = text.replace(/```json|```/g, "").trim();
-        return JSON.parse(cleanedText);
+        const parsed = JSON.parse(cleanedText);
+        console.log("[Gemini] parsed result:", parsed);
+        return parsed;
     } catch (error) {
-        console.error("Gemini breakdown error:", error);
+        console.error("[Gemini] breakdownTask error:", error);
         return null;
     }
 }

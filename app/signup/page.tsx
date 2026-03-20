@@ -105,7 +105,7 @@ export default function SignupPage() {
                                     type="text"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
-                                    placeholder="John Doe"
+                                    placeholder="Kim Jong Un"
                                     className="w-full pl-10 pr-4 h-12 bg-white/5 border border-white/10 text-white rounded-xl outline-none focus:border-[#26d9d9]/40 transition-all placeholder:text-white/15 text-sm"
                                 />
                             </div>

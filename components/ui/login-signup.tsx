@@ -88,10 +88,14 @@ export default function LoginCardSection({ onLogin, onCreateAccount }: LoginCard
         setError("");
         
         try {
+            const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+            const redirectUrl = `${siteUrl}/auth/callback`;
+            console.log(`Redirecting to: ${redirectUrl}`);
+            
             const { error } = await supabase.auth.signInWithOAuth({
                 provider,
                 options: {
-                    redirectTo: `${window.location.origin}/auth/callback`,
+                    redirectTo: redirectUrl,
                 },
             });
 

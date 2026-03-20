@@ -6,6 +6,12 @@ import { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import Particles from "@/components/ui/Particles";
 import { Logo } from "@/components/ui/logo";
 import { supabase } from "@/lib/supabase";
+import { 
+    breakdownTask, 
+    suggestPriority, 
+    getDailyFocus, 
+    parseNaturalLanguageTask 
+} from "@/lib/gemini";
 
 const PRIORITY = {
     HIGH: "1",
@@ -37,6 +43,13 @@ export default function DashboardPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // AI Features State
+    const [isAILoading, setIsAILoading] = useState(false);
+    const [aiPrioritySuggestion, setAiPrioritySuggestion] = useState<Priority | null>(null);
+    const [nlpEnabled, setNlpEnabled] = useState(false);
+    const [isFocusModalOpen, setIsFocusModalOpen] = useState(false);
+    const [focusTasks, setFocusTasks] = useState<{ title: string; reason: string }[]>([]);
 
     // Sync Auth State
     useEffect(() => {
@@ -126,6 +139,100 @@ export default function DashboardPage() {
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
     const [newProjectName, setNewProjectName] = useState("");
     const [newProjectColor, setNewProjectColor] = useState("#3b82f6");
+
+    // Feature 2: Smart Priority Suggester
+    useEffect(() => {
+        if (!newTaskTitle.trim() || nlpEnabled || isAILoading) {
+            setAiPrioritySuggestion(null);
+            return;
+        }
+
+        const timeoutId = setTimeout(async () => {
+            if (newTaskTitle.length > 3) {
+                const suggestion = await suggestPriority(newTaskTitle);
+                if (suggestion) {
+                    const mappedPriority = 
+                        suggestion === "HIGH" ? PRIORITY.HIGH : 
+                        suggestion === "LOW" ? PRIORITY.LOW : 
+                        PRIORITY.MEDIUM;
+                    setAiPrioritySuggestion(mappedPriority);
+                }
+            }
+        }, 800);
+
+        return () => clearTimeout(timeoutId);
+    }, [newTaskTitle, nlpEnabled]);
+
+    // Feature 1: AI Task Breakdown
+    const handleAIBreakdown = async () => {
+        if (!newTaskTitle.trim() || !user) return;
+        setIsAILoading(true);
+        try {
+            const subtasks = await breakdownTask(newTaskTitle);
+            if (subtasks && Array.isArray(subtasks)) {
+                // Add all subtasks sequentially
+                for (const sub of subtasks) {
+                    await fetch("/api/tasks", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            title: sub.title,
+                            priority: sub.priority === "HIGH" ? PRIORITY.HIGH : sub.priority === "LOW" ? PRIORITY.LOW : PRIORITY.MEDIUM,
+                            category: "AI Breakdown",
+                            time: null,
+                        }),
+                    });
+                }
+                // Refresh tasks
+                const res = await fetch("/api/tasks");
+                if (res.ok) setTasks(await res.json());
+                setNewTaskTitle("");
+            }
+        } catch (error) {
+            console.error("Error breaking down task:", error);
+        } finally {
+            setIsAILoading(false);
+        }
+    };
+
+    // Feature 4: Natural Language Parsing
+    const handleNLPInput = async (val: string) => {
+        setNewTaskTitle(val);
+        if (!nlpEnabled || val.length < 5) return;
+
+        const timeoutId = setTimeout(async () => {
+            const parsed = await parseNaturalLanguageTask(val);
+            if (parsed) {
+                if (parsed.title) setNewTaskTitle(parsed.title);
+                if (parsed.priority) {
+                    const mappedPriority = 
+                        parsed.priority === "HIGH" ? PRIORITY.HIGH : 
+                        parsed.priority === "LOW" ? PRIORITY.LOW : 
+                        PRIORITY.MEDIUM;
+                    setNewTaskPriority(mappedPriority);
+                }
+                if (parsed.time) setNewTaskDate(parsed.time.split('T')[0]);
+            }
+        }, 1000);
+
+        return () => clearTimeout(timeoutId);
+    };
+
+    // Feature 3: Focus Mode
+    const openFocusMode = async () => {
+        if (tasks.length === 0) return;
+        setIsFocusModalOpen(true);
+        setIsAILoading(true);
+        try {
+            const focus = await getDailyFocus(tasks);
+            if (focus) setFocusTasks(focus);
+        } catch (error) {
+            console.error("Error getting focus tasks:", error);
+        } finally {
+            setIsAILoading(false);
+        }
+    };
+
 
     const filteredTasks = useMemo(() => {
         return tasks.filter((task) => {
@@ -264,6 +371,85 @@ export default function DashboardPage() {
 
     return (
         <div className="flex h-screen overflow-hidden bg-[#050a0a] text-white">
+            {/* Focus Mode Modal */}
+            {isFocusModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl p-4">
+                    <div
+                        className="w-full max-w-2xl rounded-3xl p-10 shadow-2xl border overflow-hidden relative"
+                        style={{
+                            background: "linear-gradient(135deg, rgba(8,16,16,0.95), rgba(12,24,24,0.98))",
+                            borderColor: "rgba(38,217,217,0.15)",
+                        }}
+                    >
+                        {/* Decorative glow */}
+                        <div className="absolute -top-24 -right-24 size-48 bg-[#26d9d9]/10 blur-[100px] rounded-full" />
+                        
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-2xl font-black flex items-center gap-3">
+                                        <span className="material-symbols-outlined text-[#26d9d9]">auto_awesome</span>
+                                        Daily Focus Mode
+                                    </h3>
+                                    <p className="text-white/40 text-sm mt-1">Gemini AI selected your top priorities for today</p>
+                                </div>
+                                <button 
+                                    onClick={() => setIsFocusModalOpen(false)}
+                                    className="size-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer"
+                                >
+                                    <span className="material-symbols-outlined text-sm">close</span>
+                                </button>
+                            </div>
+
+                            {isAILoading ? (
+                                <div className="py-20 flex flex-col items-center gap-4">
+                                    <div className="size-12 border-2 border-[#26d9d9] border-t-transparent rounded-full animate-spin" />
+                                    <p className="animate-pulse text-[#26d9d9]/60 font-medium italic">Analyzing your productivity...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {focusTasks.length > 0 ? (
+                                        focusTasks.map((item, idx) => (
+                                            <div 
+                                                key={idx} 
+                                                className="p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-[#26d9d9]/20 transition-all group"
+                                            >
+                                                <div className="flex items-center gap-4">
+                                                    <div className="size-10 rounded-full bg-[#26d9d9]/10 flex items-center justify-center text-[#26d9d9] font-black text-xs">
+                                                        {idx + 1}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-lg group-hover:text-[#26d9d9] transition-colors">{item.title}</h4>
+                                                        <p className="text-white/40 text-sm italic mt-1 font-medium leading-relaxed">
+                                                            "{item.reason}"
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-10 opacity-30 italic">No tasks found to analyze.</div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="mt-10">
+                                <button
+                                    onClick={() => setIsFocusModalOpen(false)}
+                                    className="w-full py-4 rounded-2xl font-black text-sm transition-all shadow-xl shadow-[#26d9d9]/10"
+                                    style={{
+                                        background: "linear-gradient(135deg, #26d9d9, #1ab3b3)",
+                                        color: "#050a0a",
+                                    }}
+                                >
+                                    LET'S GET TO WORK
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* New Project Modal */}
             {isProjectModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
@@ -456,6 +642,13 @@ export default function DashboardPage() {
                             />
                         </div>
                         <button
+                            onClick={openFocusMode}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#26d9d9]/10 border border-[#26d9d9]/20 text-[#26d9d9] hover:bg-[#26d9d9]/20 transition-all font-bold text-xs"
+                        >
+                            <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                            Focus Mode
+                        </button>
+                        <button
                             onClick={() => { setShowOnlyCompleted(null); setActiveProjectFilter(null); setSearchQuery(""); }}
                             className="size-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 hover:border-white/10 transition-all cursor-pointer"
                         >
@@ -484,22 +677,55 @@ export default function DashboardPage() {
                                     borderColor: "rgba(38,217,217,0.08)",
                                 }}
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="size-8 rounded-lg bg-[#26d9d9]/10 flex items-center justify-center">
-                                        <span className="material-symbols-outlined text-[#26d9d9] text-lg">add_task</span>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex-1 flex items-center gap-3 group">
+                                        <div className="size-8 rounded-lg bg-[#26d9d9]/10 flex items-center justify-center group-focus-within:bg-[#26d9d9]/20 transition-all">
+                                            <span className="material-symbols-outlined text-[#26d9d9] text-lg">
+                                                {nlpEnabled ? "magic_button" : "add_task"}
+                                            </span>
+                                        </div>
+                                        <input
+                                            className="flex-1 bg-transparent text-base font-medium placeholder:text-white/20 outline-none"
+                                            placeholder={nlpEnabled ? "e.g. Call John tomorrow 3pm high priority" : `Add a task${activeProjectFilter ? ` to ${activeProjectFilter}` : ""}...`}
+                                            type="text"
+                                            value={newTaskTitle}
+                                            onChange={(e) => nlpEnabled ? handleNLPInput(e.target.value) : setNewTaskTitle(e.target.value)}
+                                            onKeyDown={(e) => e.key === "Enter" && addTask()}
+                                        />
                                     </div>
-                                    <input
-                                        className="flex-1 bg-transparent text-base font-medium placeholder:text-white/20 outline-none"
-                                        placeholder={`Add a task${activeProjectFilter ? ` to ${activeProjectFilter}` : ""}...`}
-                                        type="text"
-                                        value={newTaskTitle}
-                                        onChange={(e) => setNewTaskTitle(e.target.value)}
-                                        onKeyDown={(e) => e.key === "Enter" && addTask()}
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setNlpEnabled(!nlpEnabled)}
+                                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${nlpEnabled ? "bg-[#26d9d9] text-[#050a0a]" : "bg-white/5 text-white/30 hover:bg-white/10"}`}
+                                        >
+                                            AI NLP
+                                        </button>
+                                        <button
+                                            onClick={handleAIBreakdown}
+                                            disabled={isAILoading || !newTaskTitle.trim()}
+                                            className="size-8 rounded-lg bg-white/5 hover:bg-[#26d9d9]/10 border border-white/5 hover:border-[#26d9d9]/20 flex items-center justify-center transition-all group disabled:opacity-20 cursor-pointer"
+                                            title="AI Breakdown"
+                                        >
+                                            <span className="material-symbols-outlined text-base text-white/40 group-hover:text-[#26d9d9]">
+                                                {isAILoading ? "sync" : "temp_preferences_custom"}
+                                            </span>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex flex-wrap items-center justify-between pt-3 border-t border-white/5 gap-4">
                                     <div className="flex flex-wrap gap-3 items-center">
-                                        <div className="flex bg-white/5 rounded-lg p-0.5 gap-0.5">
+                                        <div className="flex bg-white/5 rounded-lg p-0.5 gap-0.5 relative">
+                                            {aiPrioritySuggestion && (
+                                                <div 
+                                                    className="absolute -top-12 left-0 animate-bounce cursor-pointer z-10" 
+                                                    onClick={() => setNewTaskPriority(aiPrioritySuggestion)}
+                                                >
+                                                    <div className="bg-[#26d9d9] text-[#050a0a] text-[9px] font-black px-2 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xl shadow-[#26d9d9]/20 whitespace-nowrap">
+                                                        <span className="material-symbols-outlined text-[12px]">auto_awesome</span>
+                                                        AI SUGGESTS: {aiPrioritySuggestion === PRIORITY.HIGH ? "HIGH" : aiPrioritySuggestion === PRIORITY.LOW ? "LOW" : "MEDIUM"}
+                                                    </div>
+                                                </div>
+                                            )}
                                             {(["LOW", "MED", "HIGH"] as const).map((label, idx) => {
                                                 const val = [PRIORITY.LOW, PRIORITY.MEDIUM, PRIORITY.HIGH][idx];
                                                 const colors = ["#6b7280", "#f59e0b", "#ef4444"];

@@ -27,12 +27,6 @@ export default function Home() {
                     </a>
                     <div className="flex items-center gap-3">
                         <Link
-                            href="/portfolio-builder"
-                            className="text-white/60 hover:text-white text-sm transition-colors"
-                        >
-                            Portfolio Builder
-                        </Link>
-                        <Link
                             href="/login"
                             className="bg-[#26d9d9] text-[#0a0a0a] px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-[#26d9d9]/90 transition-all shadow-lg shadow-[#26d9d9]/20"
                         >

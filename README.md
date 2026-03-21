@@ -141,6 +141,20 @@ lib/
 
 ---
 
+## Problems & Solutions
+
+Real challenges encountered during development:
+
+| # | Problem | Root Cause | Fix |
+|---|---------|-----------|-----|
+| 1 | **OAuth login lands on 404** | Supabase returns tokens in URL fragments (`#access_token=...`) which the server can't read | Built a global `AuthSync` component that parses fragments client-side as a fallback |
+| 2 | **Gemini API key empty on client** | Next.js 16 Turbopack doesn't inline `NEXT_PUBLIC_` env vars reliably into client bundles | Moved all AI calls to a server-side API route (`/api/gemini`) — key never touches the browser |
+| 3 | **`cookies()` build failures on Vercel** | `next/headers` cookies are now async in Next.js 15+ | Refactored all API routes and auth callback to `await cookies()` |
+| 4 | **Social login redirects to localhost** | Supabase Site URL was still set to `localhost:3000` | Updated Supabase dashboard + used `window.location.origin` dynamically |
+| 5 | **Drag intercepting click events** | Default `@dnd-kit` PointerSensor treats any mouse movement as a drag | Configured `activationConstraint: { distance: 5 }` — clicks pass through, drags activate on movement |
+
+---
+
 ## License
 
 MIT © [Snehal Chetry](https://github.com/snehalchetry)

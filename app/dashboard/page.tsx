@@ -255,7 +255,6 @@ export default function DashboardPage() {
 
     // Feature 3: Focus Mode
     const openFocusMode = async () => {
-        if (tasks.length === 0) return;
         setIsFocusModalOpen(true);
         setIsAILoading(true);
         try {

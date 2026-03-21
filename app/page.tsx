@@ -14,14 +14,14 @@ export default function Home() {
     return (
         <main className="relative">
             {/* Fixed navigation overlay */}
-            <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5">
-                <Logo className="size-10" />
-                <div className="flex items-center gap-5">
+            <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5">
+                <Logo className="size-8 sm:size-10" />
+                <div className="flex items-center gap-3 sm:gap-5">
                     <a
                         href="https://github.com/snehalchetry/taskflow"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-white/60 hover:text-white text-sm transition-colors"
+                        className="text-white/60 hover:text-white text-xs sm:text-sm transition-colors"
                     >
                         GitHub
                     </a>

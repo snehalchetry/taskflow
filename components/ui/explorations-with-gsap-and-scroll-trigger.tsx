@@ -146,7 +146,7 @@ export function NebulaCube() {
     const particleSystemRef = useRef<THREE.Points | null>(null);
     const constellationSystemRef = useRef<THREE.LineSegments | null>(null);
     const particleSettingsRef = useRef({
-        PARTICLE_COUNT: 2000,
+        PARTICLE_COUNT: typeof window !== 'undefined' && window.innerWidth < 768 ? 800 : 2000,
         PARTICLE_MOUSE_INFLUENCE: 0.0001,
         PARTICLE_REPULSION_RADIUS: 0.8,
         PARTICLE_REPULSION_STRENGTH: 0.00008,

@@ -143,6 +143,7 @@ export default function DashboardPage() {
     const [newTaskTitle, setNewTaskTitle] = useState("");
     const [newTaskPriority, setNewTaskPriority] = useState<Priority>(PRIORITY.MEDIUM);
     const [newTaskDate, setNewTaskDate] = useState("");
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [showOnlyCompleted, setShowOnlyCompleted] = useState<boolean | null>(null);
@@ -276,6 +277,11 @@ export default function DashboardPage() {
             return matchesSearch && matchesStatus && matchesProject;
         });
     }, [tasks, searchQuery, showOnlyCompleted, activeProjectFilter]);
+
+    // Close sidebar on filter change (mobile)
+    useEffect(() => {
+        setIsSidebarOpen(false);
+    }, [showOnlyCompleted, activeProjectFilter]);
 
     // Group tasks by category for organized display
     const groupedTasks = useMemo(() => {
@@ -449,7 +455,7 @@ export default function DashboardPage() {
             {/* â”€â”€â”€ Focus Mode Modal â”€â”€â”€ */}
             {isFocusModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-2xl p-4">
-                    <div className="modal-enter w-full max-w-2xl rounded-3xl p-10 glass-strong shadow-2xl overflow-hidden relative">
+                    <div className="modal-enter w-full max-w-2xl rounded-3xl p-6 sm:p-10 glass-strong shadow-2xl overflow-hidden relative">
                         {/* Decorative glows */}
                         <div className="absolute -top-32 -right-32 size-64 bg-[#26d9d9]/8 blur-[120px] rounded-full" />
                         <div className="absolute -bottom-20 -left-20 size-40 bg-[#10b981]/5 blur-[80px] rounded-full" />
@@ -586,12 +592,26 @@ export default function DashboardPage() {
                 </div>
             )}
 
+            {/* Sidebar Overlay (Mobile) */}
+            {isSidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden transition-opacity"
+                    onClick={() => setIsSidebarOpen(false)}
+                />
+            )}
+
             {/* â”€â”€â”€ Sidebar â”€â”€â”€ */}
-            <aside className="w-[260px] flex-shrink-0 flex flex-col justify-between py-6 px-4 glass-strong border-r border-white/[0.04]">
+            <aside className={`fixed lg:relative z-40 w-[280px] h-full flex-shrink-0 flex flex-col justify-between py-6 px-4 glass-strong border-r border-white/[0.04] transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <div className="flex flex-col gap-7">
-                    {/* Logo */}
-                    <div className="px-2">
+                    {/* Logo & Close Button (Mobile) */}
+                    <div className="px-2 flex items-center justify-between">
                         <Logo className="size-9" textSize="text-lg" />
+                        <button
+                            className="lg:hidden size-8 rounded-lg glass flex items-center justify-center"
+                            onClick={() => setIsSidebarOpen(false)}
+                        >
+                            <span className="material-symbols-outlined text-[18px] text-white/40">close</span>
+                        </button>
                     </div>
 
                     {/* Navigation */}
@@ -662,9 +682,9 @@ export default function DashboardPage() {
             </aside>
 
             {/* â”€â”€â”€ Main Content â”€â”€â”€ */}
-            <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative">
+            <main className="flex-1 flex flex-col min-w-0 overflow-y-auto relative w-full lg:w-auto">
                 {/* Particle Background */}
-                <div className="fixed inset-0 z-0" style={{ left: "260px" }}>
+                <div className="fixed inset-0 z-0 pointer-events-none lg:left-[280px]">
                     <Particles
                         particleColors={["#26d9d9", "#ffffff"]}
                         particleCount={100}
@@ -678,35 +698,43 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Header â€” Greeting Hero */}
-                <header className="sticky top-0 z-20 px-8 py-6 border-b border-white/[0.04]"
+                <header className="sticky top-0 z-20 px-4 sm:px-8 py-4 sm:py-6 border-b border-white/[0.04]"
                     style={{ background: "rgba(5,10,10,0.8)", backdropFilter: "blur(20px)" }}
                 >
-                    <div className="flex items-end justify-between">
-                        <div>
-                            <h1 className="text-3xl font-display italic tracking-tight text-white/90">
-                                {getGreeting()}, {user.name.split(" ")[0]}
-                            </h1>
-                            <p className="text-white/25 text-[13px] mt-1.5 font-medium">
-                                {pendingCount === 0
-                                    ? "All caught up â€” take a break âœ¨"
-                                    : `${pendingCount} task${pendingCount > 1 ? "s" : ""} remaining Â· ${completedCount} completed`
-                                }
-                            </p>
+                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 sm:gap-4">
+                        <div className="flex items-center gap-4">
+                            <button 
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="lg:hidden size-10 rounded-xl glass flex items-center justify-center hover:bg-white/10 transition-all"
+                            >
+                                <span className="material-symbols-outlined text-[#26d9d9]">menu</span>
+                            </button>
+                            <div>
+                                <h1 className="text-2xl sm:text-3xl font-display italic tracking-tight text-white/90">
+                                    {getGreeting()}, {user.name.split(" ")[0]}
+                                </h1>
+                                <p className="text-white/25 text-[12px] sm:text-[13px] mt-1 font-medium">
+                                    {pendingCount === 0
+                                        ? "All caught up"
+                                        : `${pendingCount} task${pendingCount > 1 ? "s" : ""} left`
+                                    }
+                                </p>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <div className="relative">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                            <div className="relative flex-1 sm:flex-none">
                                 <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-white/15 text-[16px]">search</span>
                                 <input
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="pl-10 pr-4 py-2.5 glass rounded-xl text-[13px] w-52 outline-none focus:border-[#26d9d9]/20 focus:glow-teal transition-all placeholder:text-white/15"
+                                    className="w-full sm:w-52 pl-10 pr-4 py-2.5 glass rounded-xl text-[13px] outline-none focus:border-[#26d9d9]/20 focus:glow-teal transition-all placeholder:text-white/15"
                                     placeholder="Search..."
                                     type="text"
                                 />
                             </div>
                             <button
                                 onClick={openFocusMode}
-                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-all cursor-pointer hover-lift"
+                                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-all cursor-pointer hover-lift"
                                 style={{
                                     background: "linear-gradient(135deg, rgba(38,217,217,0.12), rgba(38,217,217,0.06))",
                                     border: "1px solid rgba(38,217,217,0.15)",
@@ -721,12 +749,12 @@ export default function DashboardPage() {
                 </header>
 
                 {/* Content Grid */}
-                <div className="relative z-[1] flex-1 p-8">
+                <div className="relative z-[1] flex-1 p-4 sm:p-8">
                     <div className="max-w-6xl mx-auto grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-8">
                         {/* Left Column */}
                         <div className="space-y-6">
-                            {/* Stat Cards â€” Gradient Glass */}
-                            <div className="grid grid-cols-3 gap-4">
+                            {/* Stat Cards ― Gradient Glass */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <StatCard label="Total" value={tasks.length} icon="assignment"
                                     gradient="linear-gradient(135deg, rgba(38,217,217,0.1), rgba(38,217,217,0.03))"
                                     glowColor="rgba(38,217,217,0.08)" iconColor="#26d9d9" />

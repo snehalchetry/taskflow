@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import Particles from "@/components/ui/Particles";
@@ -12,6 +12,23 @@ import {
     getDailyFocus, 
     parseNaturalLanguageTask 
 } from "@/lib/gemini";
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const PRIORITY = {
     HIGH: "1",
@@ -369,6 +386,24 @@ export default function DashboardPage() {
             setTasks(originalTasks);
         }
     };
+
+    // DnD sensors with activation distance to avoid conflicts with clicks
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
+
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        setTasks((prev) => {
+            const oldIdx = prev.findIndex((t) => t.id === active.id);
+            const newIdx = prev.findIndex((t) => t.id === over.id);
+            if (oldIdx === -1 || newIdx === -1) return prev;
+            return arrayMove(prev, oldIdx, newIdx);
+        });
+    }, []);
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
@@ -831,65 +866,22 @@ export default function DashboardPage() {
                                                 </div>
 
                                                 {/* Tasks */}
-                                                <div className="space-y-1.5">
-                                                    {categoryTasks.map((task, index) => (
-                                                        <div
-                                                            key={task.id}
-                                                            onClick={() => toggleTask(task.id)}
-                                                            className="task-enter group flex items-center gap-4 px-4 py-3.5 rounded-xl glass hover-lift cursor-pointer relative overflow-hidden"
-                                                            style={{
-                                                                opacity: task.completed ? 0.4 : 1,
-                                                                animationDelay: `${index * 50}ms`,
-                                                            }}
-                                                        >
-                                                            {/* Priority gradient left border */}
-                                                            <div
-                                                                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full"
-                                                                style={{ background: priorityConfig[task.priority].gradient }}
-                                                            />
-
-                                                            {/* Checkbox */}
-                                                            <div
-                                                                className={`flex items-center justify-center size-[18px] rounded-full border-[1.5px] transition-all flex-shrink-0 ml-1 ${task.completed ? "check-bounce" : ""}`}
-                                                                style={{
-                                                                    borderColor: task.completed ? "#10b981" : "rgba(255,255,255,0.1)",
-                                                                    background: task.completed ? "#10b981" : "transparent",
-                                                                }}
-                                                            >
-                                                                {task.completed && (
-                                                                    <span className="material-symbols-outlined text-[10px] text-[#050a0a] font-bold">check</span>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Content */}
-                                                            <div className="flex-1 min-w-0">
-                                                                <span className={`text-[13px] font-medium block leading-snug ${task.completed ? "line-through text-white/20" : "text-white/70 group-hover:text-white/90"}`}>
-                                                                    {task.title}
-                                                                </span>
-                                                                <div className="flex items-center gap-2.5 mt-1">
-                                                                    <span className="flex items-center gap-1 text-[9px] font-medium" style={{ color: `${priorityConfig[task.priority].color}90` }}>
-                                                                        <span className="size-1.5 rounded-full" style={{ backgroundColor: priorityConfig[task.priority].color }} />
-                                                                        {priorityConfig[task.priority].label}
-                                                                    </span>
-                                                                    {task.time && (
-                                                                        <span className="text-[10px] text-white/15 flex items-center gap-1">
-                                                                            <span className="material-symbols-outlined text-[9px]">schedule</span>
-                                                                            {task.time}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Delete */}
-                                                            <button
-                                                                onClick={(e) => deleteTask(task.id, e)}
-                                                                className="material-symbols-outlined text-white/0 group-hover:text-white/10 hover:!text-red-400/70 transition-all text-[15px] cursor-pointer"
-                                                            >
-                                                                close
-                                                            </button>
+                                                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                                                    <SortableContext items={categoryTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                                                        <div className="space-y-1.5">
+                                                            {categoryTasks.map((task, index) => (
+                                                                <SortableTaskItem
+                                                                    key={task.id}
+                                                                    task={task}
+                                                                    index={index}
+                                                                    priorityConfig={priorityConfig}
+                                                                    onToggle={toggleTask}
+                                                                    onDelete={deleteTask}
+                                                                />
+                                                            ))}
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                    </SortableContext>
+                                                </DndContext>
                                             </div>
                                         );
                                     })
@@ -976,7 +968,100 @@ export default function DashboardPage() {
     );
 }
 
-/* â”€â”€â”€ Sub-components â”€â”€â”€ */
+/* ─── Sortable Task Item ─── */
+
+interface SortableTaskItemProps {
+    task: Task;
+    index: number;
+    priorityConfig: Record<string, { label: string; color: string; bg: string; gradient: string }>;
+    onToggle: (id: string) => void;
+    onDelete: (id: string, e: React.MouseEvent) => void;
+}
+
+function SortableTaskItem({ task, index, priorityConfig, onToggle, onDelete }: SortableTaskItemProps) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: task.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : task.completed ? 0.4 : 1,
+        animationDelay: `${index * 50}ms`,
+        zIndex: isDragging ? 50 : undefined,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`task-enter group flex items-center gap-3 px-4 py-3.5 rounded-xl glass hover-lift cursor-pointer relative overflow-hidden ${isDragging ? "shadow-xl shadow-[#26d9d9]/10" : ""}`}
+        >
+            {/* Priority gradient left border */}
+            <div
+                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full"
+                style={{ background: priorityConfig[task.priority].gradient }}
+            />
+
+            {/* Drag handle */}
+            <span
+                {...attributes}
+                {...listeners}
+                className="material-symbols-outlined text-[16px] text-white/0 group-hover:text-white/15 hover:!text-[#26d9d9]/50 transition-all cursor-grab active:cursor-grabbing flex-shrink-0"
+            >
+                drag_indicator
+            </span>
+
+            {/* Checkbox */}
+            <div
+                onClick={() => onToggle(task.id)}
+                className={`flex items-center justify-center size-[18px] rounded-full border-[1.5px] transition-all flex-shrink-0 cursor-pointer ${task.completed ? "check-bounce" : ""}`}
+                style={{
+                    borderColor: task.completed ? "#10b981" : "rgba(255,255,255,0.1)",
+                    background: task.completed ? "#10b981" : "transparent",
+                }}
+            >
+                {task.completed && (
+                    <span className="material-symbols-outlined text-[10px] text-[#050a0a] font-bold">check</span>
+                )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0" onClick={() => onToggle(task.id)}>
+                <span className={`text-[13px] font-medium block leading-snug ${task.completed ? "line-through text-white/20" : "text-white/70 group-hover:text-white/90"}`}>
+                    {task.title}
+                </span>
+                <div className="flex items-center gap-2.5 mt-1">
+                    <span className="flex items-center gap-1 text-[9px] font-medium" style={{ color: `${priorityConfig[task.priority].color}90` }}>
+                        <span className="size-1.5 rounded-full" style={{ backgroundColor: priorityConfig[task.priority].color }} />
+                        {priorityConfig[task.priority].label}
+                    </span>
+                    {task.time && (
+                        <span className="text-[10px] text-white/15 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[9px]">schedule</span>
+                            {task.time}
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* Delete */}
+            <button
+                onClick={(e) => onDelete(task.id, e)}
+                className="material-symbols-outlined text-white/0 group-hover:text-white/10 hover:!text-red-400/70 transition-all text-[15px] cursor-pointer"
+            >
+                close
+            </button>
+        </div>
+    );
+}
+
+/* ─── Sub-components ─── */
 
 function SidebarItem({ icon, label, count, active, onClick }: { icon: string; label: string; count?: number; active: boolean; onClick: () => void }) {
     return (

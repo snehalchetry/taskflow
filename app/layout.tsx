@@ -3,7 +3,7 @@ import "./globals.css";
 import AuthSync from "@/components/auth/auth-sync";
 
 export const metadata: Metadata = {
-    title: "TaskFlow — Modern Task Management",
+    title: "TaskFlow - AI Task Manager",
     description:
         "TaskFlow helps you organize, track, and complete your tasks with a beautiful, modern interface. Boost your productivity with smart task management.",
     keywords: ["task management", "productivity", "organize", "taskflow"],

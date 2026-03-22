@@ -1,0 +1,28 @@
+<svg
+  width="40"
+  height="40"
+  viewBox="0 0 40 40"
+  xmlns="http://www.w3.org/2000/svg"
+  fill="none"
+  role="img"
+  aria-label="Taskflow icon"
+>
+  <!--
+    Taskflow — Icon Mark
+    A geometric checkmark whose right arm terminates in a
+    right-angle corner arrowhead — "task done, keep moving."
+
+    Design language: Linear / Vercel / Supabase
+    — stroke-based, sharp corners, no fill, no shadows
+    — Two subpaths in one <path> to preserve miter joins
+  -->
+
+  <!-- Check shaft + corner arrowhead (integrated single path) -->
+  <path
+    d="M 7 20 L 14 27 L 33 8 M 27 8 L 33 8 L 33 14"
+    stroke="#26d9d9"
+    stroke-width="2.5"
+    stroke-linecap="square"
+    stroke-linejoin="miter"
+  />
+</svg>
